@@ -74,14 +74,39 @@
   (update engine :systems
           #(-> % (conj system) priority-sort)))
 
+;; event bus
+;; ----------------------------------------------------------------
+
+(defn event!
+  ([eng event-name]
+   (event! eng event-name nil))
+  ([eng event-name data]
+   (swap! (:event-bus eng) conj [event-name data])))
+
+(defn run-events [engine]
+  (let [current-events @(:event-bus engine)]
+    (reset! (:event-bus engine) [])
+    (reduce
+     (fn [eng [event-type data]]
+       (if-let [handler (get-in eng [:event-handlers event-type])]
+         (handler eng)
+         eng))
+     engine
+     current-events)))
+
 ;; Engine
 ;; ----------------------------------------------------------------
 
-(defrecord Engine [frame globals entities systems])
+(defn frame-inc [engine]
+  (update engine :frame inc))
 
-(defn engine [{:keys [entities systems globals]}]
+(defrecord Engine [frame globals event-bus event-handlers entities systems])
+
+(defn engine [{:keys [entities event-handlers systems globals]}]
   (map->Engine
    {:frame 0
+    :event-bus (atom [])
+    :event-handlers (or event-handlers {})
     :globals (or globals nil)
     :entities (assoc-by-id {} (or entities []))
     :systems (or (priority-sort systems) [])}))
@@ -90,11 +115,12 @@
   (reduce
    (fn [{:keys [entities] :as eng} system]
      (if-not ((:should-run system) eng) eng
-             (let [filtered-entities
-                   (filter-entities (:required-components system) entities)
+             (let [filtered-entities (filter-entities
+                                      (:required-components system)
+                                      entities)
                    updated-entities ((:update-fn system) eng filtered-entities)]
                (update eng :entities assoc-by-id updated-entities))))
-   (update engine :frame inc)
+   (-> engine frame-inc run-events)
    systems))
 
 (defn run-engine! [running! engine]

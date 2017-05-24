@@ -73,19 +73,17 @@
            (ecs/set-component e :position {:x (+ x dx) :y (+ y dy)})))
        es))}))
 
-
-(defn make-input-system [click-queue]
-  (ecs/s {:id :input
-          :required-components #{}
-          :update-fn
-          (fn [s es]
-            (if-let [old-queue (seq @click-queue)]
-              (do
-                (reset! click-queue [])
-                (into es
-                      (mapv #(new-ball (.-x %) (.-y %))
-                            old-queue)))
-              es))}))
+(defn make-input-system [stage eng]
+  (set! (.-interactive stage) true)
+  (set! (.-hitArea stage) (P.Rectangle. 0 0 400 400))
+  (.on stage "mousedown"
+       (fn [ev]
+         (ecs/event! eng
+                     :mouse-down)))
+  (.on stage "mouseup"
+       (fn [ev]
+         (ecs/event! eng
+                     :mouse-up))))
 
 (defn prop-set! [obj k v]
   (gobj/set obj k v)
@@ -110,22 +108,44 @@
     :required-components
     #{:renderable :position}
     :update-fn
-    (fn update-render [s es]
-      (let [{:keys [stage renderer]} (:globals s)]
+    (fn update-render [eng es]
+      (let [{:keys [stage renderer mouse]} (:globals eng)]
         (doseq [e es]
           (-> (ecs/get-component e :renderable)
               :graph-obj
               (ensure-staged! stage)
               (set-position! (ecs/get-component e :position))))
-        (.render renderer stage))
-      es)}))
+        (if (= :down mouse)
+          (set! (.-backgroundColor renderer) 0x00ffff)
+          (set! (.-backgroundColor renderer) 0x000000))
+        (.render renderer stage)))}))
 
 ;; Scaffolding
 ;; ----------------------------------------------------------------
 
+(defn mouse-down-handler [engine]
+  (println "down")
+  (assoc-in engine [:globals :mouse] :down))
+
+(defn mouse-up-handler [engine]
+  (assoc-in engine [:globals :mouse] :up))
+
+(defn make-engine [renderer stage]
+  (ecs/engine {:entities [(new-ball (rand-int 400) (rand-int 400))]
+               :systems [bounce
+                         move
+                         render]
+               :event-handlers {:mouse-down mouse-down-handler
+                                :mouse-up mouse-up-handler}
+               :globals {:renderer renderer
+                         :stage stage
+                         :mouse :up
+                         :w 400
+                         :h 400}}))
+
 (defn game []
   (let [dom-node (atom false)
-        click-queue (atom [])]
+        mouse-state (atom {:mousedown false})]
     (r/create-class
      {:display-name "game"
       :component-did-mount
@@ -133,20 +153,9 @@
         (reset! dom-node (r/dom-node this))
         (let [renderer (.autoDetectRenderer P 400 400)
               stage (P.Container.)
-              eng (ecs/engine {:entities [(new-ball (rand-int 400) (rand-int 400))]
-                               :systems [bounce
-                                         move
-                                         (make-input-system click-queue)
-                                         render]
-                               :globals {:renderer renderer
-                                         :stage stage
-                                         :w 400
-                                         :h 400}})]
-          (set! (.-interactive stage) true)
-          (set! (.-hitArea stage) (P.Rectangle. 0 0 400 400))
-          (.on stage "click"
-               (fn [ev]
-                 (swap! click-queue conj (.. ev -data -global))))
+              eng (make-engine renderer stage)]
+
+          (make-input-system stage eng)
           (ecs/run-engine! dom-node eng)
           (.appendChild @dom-node (.-view renderer))))
       :component-will-unmount
