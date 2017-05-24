@@ -83,22 +83,8 @@
   ([eng event-name data]
    (swap! (:event-bus eng) conj [event-name data])))
 
-(defn run-events [engine]
-  (let [current-events @(:event-bus engine)]
-    (reset! (:event-bus engine) [])
-    (reduce
-     (fn [eng [event-type data]]
-       (if-let [handler (get-in eng [:event-handlers event-type])]
-         (handler eng)
-         eng))
-     engine
-     current-events)))
-
 ;; Engine
 ;; ----------------------------------------------------------------
-
-(defn frame-inc [engine]
-  (update engine :frame inc))
 
 (defrecord Engine [frame globals event-bus event-handlers entities systems])
 
@@ -111,7 +97,21 @@
     :entities (assoc-by-id {} (or entities []))
     :systems (or (priority-sort systems) [])}))
 
-(defn tick-engine [{:keys [systems] :as engine}]
+(defn frame-inc [engine]
+  (update engine :frame inc))
+
+(defn run-events [engine]
+  (let [current-events @(:event-bus engine)]
+    (reset! (:event-bus engine) [])
+    (reduce
+     (fn [eng [event-type data]]
+       (if-let [handler (get-in eng [:event-handlers event-type])]
+         (handler eng)
+         eng))
+     engine
+     current-events)))
+
+(defn run-systems [{:keys [systems] :as engine}]
   (reduce
    (fn [{:keys [entities] :as eng} system]
      (if-not ((:should-run system) eng) eng
@@ -120,8 +120,11 @@
                                       entities)
                    updated-entities ((:update-fn system) eng filtered-entities)]
                (update eng :entities assoc-by-id updated-entities))))
-   (-> engine frame-inc run-events)
+   engine
    systems))
+
+(defn tick-engine [engine]
+  (-> engine frame-inc run-events run-systems))
 
 (defn run-engine! [running! engine]
   (let [loop-fn
