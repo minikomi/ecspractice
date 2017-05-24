@@ -1,4 +1,5 @@
-(ns ecspixi.ecs)
+(ns ecspixi.ecs
+  (:require [clojure.set :as cs]))
 
 (def MAX_PRIORITY (.-Infinity js/window))
 
@@ -15,6 +16,14 @@
     (-> entity
         :components
         (get c-name false))))
+
+(defn filter-entities [required-components entities]
+  (filterv
+   (fn [e]
+     (cs/superset?
+      (-> e :components keys set)
+      required-components))
+   (->> entities (mapv second))))
 
 (defn get-component [entity c-name]
   (-> entity :components c-name :properties))
@@ -47,15 +56,15 @@
 ;; [S]ystem
 ;; ----------------------------------------------------------------
 
-(defrecord System [id priority update-fn should-run entity-filter])
+(defrecord System [id priority update-fn should-run required-components])
 
-(defn s [{:keys [priority update-fn should-run entity-filter]}]
+(defn s [{:keys [id priority update-fn should-run required-components]}]
   (map->System
-   {:id (random-uuid)
+   {:id id
     :priority (or priority MAX_PRIORITY)
     :update-fn update-fn
     :should-run (or should-run (constantly true))
-    :entity-filter (or entity-filter (constantly true))}))
+    :required-components (or required-components (constantly true))}))
 
 (defn priority-sort [systems]
   (sort-by #(compare (:priority %2) (:priority %1))
@@ -81,11 +90,10 @@
   (reduce
    (fn [{:keys [entities] :as eng} system]
      (if-not ((:should-run system) eng) eng
-       (let [filtered-entities (->> entities
-                                    vals
-                                    (filterv (:entity-filter system)))
-             updated-entities ((:update-fn system) eng filtered-entities)]
-         (update eng :entities assoc-by-id updated-entities))))
+             (let [filtered-entities
+                   (filter-entities (:required-components system) entities)
+                   updated-entities ((:update-fn system) eng filtered-entities)]
+               (update eng :entities assoc-by-id updated-entities))))
    (update engine :frame inc)
    systems))
 

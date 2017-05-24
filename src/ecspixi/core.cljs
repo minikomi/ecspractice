@@ -42,10 +42,7 @@
   (ecs/s
    {:id :bounce
     :priority 0
-    :entity-filter
-    (every-pred
-     (ecs/has-component? :position)
-     (ecs/has-component? :velocity))
+    :required-components #{:position :velocity}
     :update-fn
     (fn [s es]
       (mapv
@@ -62,9 +59,7 @@
   (ecs/s
    {:id :move
     :priority 1
-    :entity-filter
-    (every-pred (ecs/has-component? :position)
-                (ecs/has-component? :velocity))
+    :required-components #{:position :velocity}
     :update-fn
     (fn [_ es]
       (mapv
@@ -94,10 +89,8 @@
 (def render
   (ecs/s
    {:id :render-graph-obj
-    :entity-filter
-    (every-pred
-     (ecs/has-component? :renderable)
-     (ecs/has-component? :position))
+    :required-components
+    #{:renderable :position}
     :update-fn
     (fn update-render [s es]
       (let [{:keys [stage renderer]} (:globals s)]
@@ -122,7 +115,7 @@
         (let [renderer (.autoDetectRenderer P 400 400)
               stage (P.Container.)
               eng (ecs/engine {:entities (->> (repeatedly new-ball)
-                                              (take 600)
+                                              (take 50)
                                               vec)
                                :systems [bounce move render]
                                :globals {:renderer renderer
