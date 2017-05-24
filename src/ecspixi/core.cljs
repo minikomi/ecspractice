@@ -1,104 +1,116 @@
 (ns ecspixi.core
   (:require [cljsjs.pixi]
             [ecspixi.ecs :as ecs]
-            [reagent.core :as r]))
+            [reagent.core :as r]
+            [goog.object :as gobj]))
 
 (def P js/PIXI)
 
 (enable-console-print!)
 
 ;; components
+;; ----------------------------------------------------------------
 
 (defn new-position [x y]
-  (ecs/c {:name :position
+  (ecs/c {:id :position
           :properties {:x x
                        :y y}}))
 
 (defn new-velocity [dx dy]
-  (ecs/c {:name :velocity
+  (ecs/c {:id :velocity
           :properties {:dx dx
                        :dy dy}}))
 
 ;; entities
+;; ----------------------------------------------------------------
 
-(def ball
+(defn new-ball []
   (ecs/e
-   [(new-position 200 200)
-    (new-velocity (- (rand-int 5) 10) (- (rand-int 5) 10))
-    (ecs/c {:name :renderable
-            :properties {:type :ball}})]))
+   [(new-position (rand-int 400) (rand-int 400))
+    (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10)) 5))
+    (ecs/c {:id :renderable
+            :properties {:type :ball
+                         :graph-obj (-> (P.Graphics.)
+                                        (.beginFill 0xff6fa3)
+                                        (.drawRect -2 -2 4 4)
+                                        (.endFill))}})]))
 
 ;; systems
+;; ----------------------------------------------------------------
 
 (def bounce
   (ecs/s
-   {:name :bounce
+   {:id :bounce
     :priority 0
-    :entity-filters
-    [(ecs/has-component? :position)
-     (ecs/has-component? :velocity)]
+    :entity-filter
+    (every-pred
+     (ecs/has-component? :position)
+     (ecs/has-component? :velocity))
     :update-fn
     (fn [s es]
       (mapv
        (fn [e]
          (let [{:keys [w h]} (-> s :globals)
-               {:keys [x y]} (ecs/getc e :position)
-               {:keys [dx dy]} (ecs/getc e :velocity)
+               {:keys [x y]} (ecs/get-component e :position)
+               {:keys [dx dy]} (ecs/get-component e :velocity)
                new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
                new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
-           (println x y new-dx new-dy)
-           (ecs/update-components e [(new-velocity new-dx new-dy)])))
+           (ecs/set-component e :velocity {:dx new-dx :dy new-dy})))
        es))}))
 
 (def move
   (ecs/s
-   {:name :move
+   {:id :move
     :priority 1
-    :entity-filters
-    [(ecs/has-component? :position)
-     (ecs/has-component? :velocity)]
+    :entity-filter
+    (every-pred (ecs/has-component? :position)
+                (ecs/has-component? :velocity))
     :update-fn
     (fn [_ es]
       (mapv
        (fn [e]
-         (let [{:keys [x y]} (ecs/getc e :position)
-               {:keys [dx dy]} (ecs/getc e :velocity)]
-           (ecs/update-components e [(new-position (+ x dx) (+ y dy))])))
+         (let [{:keys [x y]} (ecs/get-component e :position)
+               {:keys [dx dy]} (ecs/get-component e :velocity)]
+           (ecs/set-component e :position {:x (+ x dx) :y (+ y dy)})))
        es))}))
 
-(defn prop-set! [prop k v]
-  (aset prop k v)
-  prop)
+(defn prop-set! [obj k v]
+  (gobj/set obj k v)
+  obj)
 
-(defn set-position [item {:keys [x y]}]
-  (-> item
+(defn set-position! [graph-obj {:keys [x y]}]
+  (-> graph-obj
       (.-position)
       (prop-set! "x" x)
       (prop-set! "y" y))
-  item)
+  graph-obj)
+
+(defn ensure-staged! [graph-obj stage]
+  (when-not (gobj/get graph-obj "staged")
+    (do (gobj/set graph-obj "staged" true)
+        (.addChild stage graph-obj)))
+  graph-obj)
 
 (def render
   (ecs/s
-   {:name :render
+   {:id :render-graph-obj
+    :entity-filter
+    (every-pred
+     (ecs/has-component? :renderable)
+     (ecs/has-component? :position))
     :update-fn
-    (fn [s es]
-      (let [stage (-> s :globals :stage)
-            renderer (-> s :globals :renderer)
-            c (-> (P.Graphics.)
-                  (.beginFill 0xff0000)
-                  (.drawRect 0 0 10 10)
-                  (.endFill))]
-        (set-position c (ecs/getc (first es) :position))
-        (.removeChildren stage)
-        (.addChild stage c)
+    (fn update-render [s es]
+      (let [{:keys [stage renderer]} (:globals s)]
+        (doseq [e es]
+          (-> (ecs/get-component e :renderable)
+              :graph-obj
+              (ensure-staged! stage)
+              (set-position! (ecs/get-component e :position))))
         (.render renderer stage))
       es)}))
 
-(def test-engine
-  (ecs/create-engine {:entities [ball]
-                      :systems [bounce move render]
-                      :globals {:w 400
-                                :h 400}}))
+;; Scaffolding
+;; ----------------------------------------------------------------
 
 (defn game []
   (let [dom-node (atom false)]
@@ -109,17 +121,15 @@
         (reset! dom-node (r/dom-node this))
         (let [renderer (.autoDetectRenderer P 400 400)
               stage (P.Container.)
-              eng (ecs/create-engine {:entities [ball]
-                                      :systems [bounce move render]
-                                      :globals {:renderer renderer
-                                                :stage stage
-                                                :w 400
-                                                :h 400}})
-              loop-fn (fn loop-fn [engine]
-                        (when @dom-node
-                          (js/requestAnimationFrame
-                           #(loop-fn (ecs/tick-engine engine)))))]
-          (loop-fn eng)
+              eng (ecs/engine {:entities (->> (repeatedly new-ball)
+                                              (take 600)
+                                              vec)
+                               :systems [bounce move render]
+                               :globals {:renderer renderer
+                                         :stage stage
+                                         :w 400
+                                         :h 400}})]
+          (ecs/run-engine! dom-node eng)
           (.appendChild @dom-node (.-view renderer))))
       :component-will-unmount
       (fn [_]
