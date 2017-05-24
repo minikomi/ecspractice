@@ -28,9 +28,9 @@
   (P.utils.rgb2hex (clj->js
                     [(+ 0.5 (rand 0.5)) (+ 0.5 (rand 0.5)) (+ 0.5 (rand 0.5))])))
 
-(defn new-ball []
+(defn new-ball [x y]
   (ecs/e
-   [(new-position (rand-int 400) (rand-int 400))
+   [(new-position x y)
     (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10)) 5))
     (ecs/c {:id :renderable
             :properties {:type :ball
@@ -83,8 +83,8 @@
               (do
                 (reset! click-queue [])
                 (into es
-                      (take (count old-queue))
-                      (repeatedly new-ball)))
+                      (mapv #(new-ball (.-x %) (.-y %))
+                            old-queue)))
               es))}))
 
 (defn prop-set! [obj k v]
@@ -133,7 +133,7 @@
         (reset! dom-node (r/dom-node this))
         (let [renderer (.autoDetectRenderer P 400 400)
               stage (P.Container.)
-              eng (ecs/engine {:entities [(new-ball)]
+              eng (ecs/engine {:entities [(new-ball (rand-int 400) (rand-int 400))]
                                :systems [bounce
                                          move
                                          (make-input-system click-queue)
@@ -146,8 +146,7 @@
           (set! (.-hitArea stage) (P.Rectangle. 0 0 400 400))
           (.on stage "click"
                (fn [ev]
-                 (swap! click-queue conj :click)))
-          (.log js/console stage)
+                 (swap! click-queue conj (.. ev -data -global))))
           (ecs/run-engine! dom-node eng)
           (.appendChild @dom-node (.-view renderer))))
       :component-will-unmount
