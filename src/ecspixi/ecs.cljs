@@ -106,7 +106,7 @@
     (reduce
      (fn [eng [event-type data]]
        (if-let [handler (get-in eng [:event-handlers event-type])]
-         (handler eng)
+         (handler eng data)
          eng))
      engine
      current-events)))

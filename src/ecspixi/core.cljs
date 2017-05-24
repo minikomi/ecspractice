@@ -123,10 +123,10 @@
 ;; Scaffolding
 ;; ----------------------------------------------------------------
 
-(defn mouse-down-handler [engine]
+(defn mouse-down-handler [engine _]
   (assoc-in engine [:globals :mouse] :down))
 
-(defn mouse-up-handler [engine]
+(defn mouse-up-handler [engine _]
   (assoc-in engine [:globals :mouse] :up))
 
 (defn make-engine [renderer stage]
