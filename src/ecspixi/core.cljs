@@ -124,7 +124,6 @@
 ;; ----------------------------------------------------------------
 
 (defn mouse-down-handler [engine]
-  (println "down")
   (assoc-in engine [:globals :mouse] :down))
 
 (defn mouse-up-handler [engine]
