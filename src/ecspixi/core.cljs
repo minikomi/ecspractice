@@ -24,6 +24,10 @@
 ;; entities
 ;; ----------------------------------------------------------------
 
+(defn rand-col []
+  (P.utils.rgb2hex (clj->js
+                    [(+ 0.5 (rand 0.5)) (+ 0.5 (rand 0.5)) (+ 0.5 (rand 0.5))])))
+
 (defn new-ball []
   (ecs/e
    [(new-position (rand-int 400) (rand-int 400))
@@ -31,7 +35,7 @@
     (ecs/c {:id :renderable
             :properties {:type :ball
                          :graph-obj (-> (P.Graphics.)
-                                        (.beginFill 0xff6fa3)
+                                        (.beginFill (rand-col))
                                         (.drawRect -2 -2 4 4)
                                         (.endFill))}})]))
 
@@ -68,6 +72,20 @@
                {:keys [dx dy]} (ecs/get-component e :velocity)]
            (ecs/set-component e :position {:x (+ x dx) :y (+ y dy)})))
        es))}))
+
+
+(defn make-input-system [click-queue]
+  (ecs/s {:id :input
+          :required-components #{}
+          :update-fn
+          (fn [s es]
+            (if-let [old-queue (seq @click-queue)]
+              (do
+                (reset! click-queue [])
+                (into es
+                      (take (count old-queue))
+                      (repeatedly new-ball)))
+              es))}))
 
 (defn prop-set! [obj k v]
   (gobj/set obj k v)
@@ -106,7 +124,8 @@
 ;; ----------------------------------------------------------------
 
 (defn game []
-  (let [dom-node (atom false)]
+  (let [dom-node (atom false)
+        click-queue (atom [])]
     (r/create-class
      {:display-name "game"
       :component-did-mount
@@ -114,14 +133,21 @@
         (reset! dom-node (r/dom-node this))
         (let [renderer (.autoDetectRenderer P 400 400)
               stage (P.Container.)
-              eng (ecs/engine {:entities (->> (repeatedly new-ball)
-                                              (take 50)
-                                              vec)
-                               :systems [bounce move render]
+              eng (ecs/engine {:entities [(new-ball)]
+                               :systems [bounce
+                                         move
+                                         (make-input-system click-queue)
+                                         render]
                                :globals {:renderer renderer
                                          :stage stage
                                          :w 400
                                          :h 400}})]
+          (set! (.-interactive stage) true)
+          (set! (.-hitArea stage) (P.Rectangle. 0 0 400 400))
+          (.on stage "click"
+               (fn [ev]
+                 (swap! click-queue conj :click)))
+          (.log js/console stage)
           (ecs/run-engine! dom-node eng)
           (.appendChild @dom-node (.-view renderer))))
       :component-will-unmount
