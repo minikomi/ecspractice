@@ -110,21 +110,17 @@
       required-components))
    (->> entities (mapv second))))
 
-(defn run-systems [{:keys [systems] :as engine}]
-  (reduce
-   (fn [{:keys [entities] :as eng} system]
-     (if-not ((:should-run system) eng) eng
-             (let [xs (comp (map second)
-                            (filter
-                              (fn [e]
-                                (cs/superset?
-                                  (-> e :components keys set)
-                                  (:required-components system)))))]
-               (update eng :entities
-                       assoc-by-id
-                       ((:update-fn system) eng (into [] xs entities))))))
-   engine
-   systems))
+(defn run-systems [{:keys [entities systems] :as eng}]
+  (doseq [system systems]
+    (let [xs (comp (map second)
+                   (filter
+                     (fn [e]
+                       (cs/superset?
+                         (-> e :components keys set)
+                         (:required-components system)))))]
+      ((:update-fn system) eng (into [] xs entities))))
+  eng)
+
 
 (defn tick-engine [engine]
   (-> engine frame-inc run-events run-systems))

@@ -15,7 +15,7 @@
 
 (defn new-position [x y]
   (ecs/c {:id :position
-          :properties (map->Position
+          :properties (clj->js
                        {:x x
                         :y y})}))
 
@@ -23,7 +23,7 @@
 
 (defn new-velocity [dx dy]
   (ecs/c {:id :velocity
-          :properties (map->Velocity
+          :properties (clj->js
                        {:dx dx
                         :dy dy})}))
 
@@ -55,17 +55,18 @@
     :required-components #{:position :velocity}
     :update-fn
     (fn [s es]
-      (mapv
-       (fn [e]
-         (let [{:keys [w h]} (-> s :globals)
-               {:keys [x y]} (ecs/get-component e :position)
-               {:keys [dx dy]} (ecs/get-component e :velocity)
-               new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
-               new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
-           (ecs/update-component e :velocity
-                                 :dx new-dx
-                                 :dy new-dy)))
-       es))}))
+      (doseq [e es]
+        (let [{:keys [w h]} (-> s :globals)
+              pos (ecs/get-component e :position)
+              vel (ecs/get-component e :velocity)
+              x (gobj/get pos "x")
+              y (gobj/get pos "y")
+              dx (gobj/get vel "dx")
+              dy (gobj/get vel "dy")
+              new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
+              new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
+          (gobj/set vel "dx" new-dx)
+          (gobj/set vel "dy" new-dy))))}))
 
 (def move
   (ecs/s
@@ -74,15 +75,16 @@
     :required-components #{:position :velocity}
     :update-fn
     (fn [_ es]
-      (mapv
-       (fn [e]
-         (let [{:keys [x y] :as pos} (ecs/get-component e :position)
-               {:keys [dx dy]} (ecs/get-component e :velocity)]
-           (ecs/update-component e
-                                 :position
-                                 :x (+ x dx)
-                                 :y (+ y dy))))
-       es))}))
+      (doseq [e es]
+        (let [pos (ecs/get-component e :position)
+              vel (ecs/get-component e :velocity)
+              x (.-x pos)
+              y (.-y pos)
+              dx (gobj/get vel "dx")
+              dy (gobj/get vel "dy")]
+          (gobj/set pos "x" (+ x dx))
+          (gobj/set pos "y" (+ y dy)))))}))
+
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
@@ -100,12 +102,8 @@
   (gobj/set obj k v)
   obj)
 
-(defn set-position! [graph-obj {:keys [x y]}]
-  (-> graph-obj
-      (.-position)
-      (prop-set! "x" x)
-      (prop-set! "y" y))
-  graph-obj)
+(defn set-position! [graph-obj pos]
+  (set! (.-position graph-obj) pos))
 
 (defn ensure-staged! [graph-obj stage]
   (when-not (gobj/get graph-obj "staged")
@@ -116,8 +114,7 @@
 (def render
   (ecs/s
    {:id :render-graph-obj
-    :required-components
-    #{:renderable :position}
+    :required-components #{:renderable :position}
     :update-fn
     (fn update-render [eng es]
       (let [{:keys [stage renderer mouse]} (:globals eng)]
@@ -142,7 +139,7 @@
 
 (defn make-engine [renderer stage]
   (ecs/engine {:entities
-               (vec (repeatedly 400 #(new-ball (rand-int 400) (rand-int 400))))
+               (vec (repeatedly 2000 #(new-ball (rand-int 400) (rand-int 400))))
                :systems [bounce
                          move
                          render]
@@ -165,7 +162,6 @@
         (let [renderer (.autoDetectRenderer P 400 400)
               stage (P.Container.)
               eng (make-engine renderer stage)]
-
           (make-input-system stage eng)
           (ecs/run-engine! dom-node eng)
           (.appendChild @dom-node (.-view renderer))))
