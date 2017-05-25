@@ -15,15 +15,16 @@
 
 (defn new-position [x y]
   (ecs/c {:id :position
-          :properties (clj->js
-                       {:x x
-                        :y y})}))
+          :properties
+          (map->Position
+           {:x x
+            :y y})}))
 
 (defrecord Velocity [dx dy])
 
 (defn new-velocity [dx dy]
   (ecs/c {:id :velocity
-          :properties (clj->js
+          :properties (map->Velocity
                        {:dx dx
                         :dy dy})}))
 
@@ -57,16 +58,12 @@
     (fn [s es]
       (doseq [e es]
         (let [{:keys [w h]} (-> s :globals)
-              pos (ecs/get-component e :position)
-              vel (ecs/get-component e :velocity)
-              x (gobj/get pos "x")
-              y (gobj/get pos "y")
-              dx (gobj/get vel "dx")
-              dy (gobj/get vel "dy")
+              {:keys [x y]} @(ecs/e->c e :position)
+              {:keys [dx dy]} @(ecs/e->c e :velocity)
               new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
               new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
-          (gobj/set vel "dx" new-dx)
-          (gobj/set vel "dy" new-dy))))}))
+          (swap! (ecs/e->c e :velocity)
+                 assoc :dx new-dx :dy new-dy))))}))
 
 (def move
   (ecs/s
@@ -76,15 +73,11 @@
     :update-fn
     (fn [_ es]
       (doseq [e es]
-        (let [pos (ecs/get-component e :position)
-              vel (ecs/get-component e :velocity)
-              x (.-x pos)
-              y (.-y pos)
-              dx (gobj/get vel "dx")
-              dy (gobj/get vel "dy")]
-          (gobj/set pos "x" (+ x dx))
-          (gobj/set pos "y" (+ y dy)))))}))
-
+        (let [{:keys [x y]} @(ecs/e->c e :position)
+              {:keys [dx dy]} @(ecs/e->c e :velocity)]
+          (swap! (ecs/e->c e :position)
+                 assoc
+                 :x (+ x dx) :y (+ y dy)))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
@@ -103,7 +96,8 @@
   obj)
 
 (defn set-position! [graph-obj pos]
-  (set! (.-position graph-obj) pos))
+  (set! (.-position graph-obj) #js{:x (:x pos)
+                                   :y (:y pos)}))
 
 (defn ensure-staged! [graph-obj stage]
   (when-not (gobj/get graph-obj "staged")
@@ -119,10 +113,10 @@
     (fn update-render [eng es]
       (let [{:keys [stage renderer mouse]} (:globals eng)]
         (doseq [e es]
-          (-> (ecs/get-component e :renderable)
+          (-> @(ecs/e->c e :renderable)
               :graph-obj
               (ensure-staged! stage)
-              (set-position! (ecs/get-component e :position))))
+              (set-position! @(ecs/e->c e :position))))
         (if (= :down mouse)
           (set! (.-backgroundColor renderer) 0x00ffff)
           (set! (.-backgroundColor renderer) 0x000000))

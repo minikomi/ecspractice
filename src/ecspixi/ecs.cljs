@@ -17,15 +17,8 @@
         :components
         (get c-name false))))
 
-(defn get-component [entity c-name]
+(defn e->c [entity c-name]
   (get-in entity [:components c-name :properties]))
-
-(defn update-component [entity c-name & new]
-  (reduce
-   (fn [e [k v]]
-     (assoc-in e [:components c-name :properties k] v))
-   entity
-   (partition 2 new)))
 
 (defrecord Entity [id components])
 
@@ -42,7 +35,7 @@
 (defn c [{:keys [id properties]}]
   (map->Component
    {:id id
-    :properties (or properties {})}))
+    :properties (atom (or properties {}))}))
 
 ;; [S]ystem
 ;; ----------------------------------------------------------------
@@ -120,7 +113,6 @@
                          (:required-components system)))))]
       ((:update-fn system) eng (into [] xs entities))))
   eng)
-
 
 (defn tick-engine [engine]
   (-> engine frame-inc run-events run-systems))
