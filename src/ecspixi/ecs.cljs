@@ -41,7 +41,6 @@
    {:id id
     :properties (volatile! (or properties {}))}))
 
-
 ;; [S]ystem
 ;; ----------------------------------------------------------------
 
@@ -112,10 +111,10 @@
   (doseq [system systems]
     (let [xs (comp (map second)
                    (filter
-                     (fn [e]
-                       (cs/superset?
-                         (-> e :components keys set)
-                         (:required-components system)))))]
+                    (fn [e]
+                      (cs/superset?
+                       (-> e :components keys set)
+                       (:required-components system)))))]
       ((:update-fn system) eng (into [] xs entities))))
   eng)
 
