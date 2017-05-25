@@ -17,24 +17,15 @@
         :components
         (get c-name false))))
 
-(defn filter-entities [required-components entities]
-  (filterv
-   (fn [e]
-     (cs/superset?
-      (-> e :components keys set)
-      required-components))
-   (->> entities (mapv second))))
-
 (defn get-component [entity c-name]
-  (-> entity :components c-name :properties))
+  (get-in entity [:components c-name :properties]))
 
-(defn set-component [entity c-name properties]
-  (assoc-in entity
-            [:components c-name :properties]
-            properties))
-
-(defn update-components [e cs]
-  (update e :components assoc-by-id cs))
+(defn update-component [entity c-name & new]
+  (reduce
+   (fn [e [k v]]
+     (assoc-in e [:components c-name :properties k] v))
+   entity
+   (partition 2 new)))
 
 (defrecord Entity [id components])
 
@@ -111,15 +102,27 @@
      engine
      current-events)))
 
+(defn filter-entities [required-components entities]
+  (filterv
+   (fn [e]
+     (cs/superset?
+      (-> e :components keys set)
+      required-components))
+   (->> entities (mapv second))))
+
 (defn run-systems [{:keys [systems] :as engine}]
   (reduce
    (fn [{:keys [entities] :as eng} system]
      (if-not ((:should-run system) eng) eng
-             (let [filtered-entities (filter-entities
-                                      (:required-components system)
-                                      entities)
-                   updated-entities ((:update-fn system) eng filtered-entities)]
-               (update eng :entities assoc-by-id updated-entities))))
+             (let [xs (comp (map second)
+                            (filter
+                              (fn [e]
+                                (cs/superset?
+                                  (-> e :components keys set)
+                                  (:required-components system)))))]
+               (update eng :entities
+                       assoc-by-id
+                       ((:update-fn system) eng (into [] xs entities))))))
    engine
    systems))
 
