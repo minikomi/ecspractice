@@ -62,8 +62,9 @@
               {:keys [dx dy]} @(ecs/e->c e :velocity)
               new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
               new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
-          (swap! (ecs/e->c e :velocity)
-                 assoc :dx new-dx :dy new-dy))))}))
+          (ecs/c-swap! e :velocity
+                       assoc
+                       :dx new-dx :dy new-dy))))}))
 
 (def move
   (ecs/s
@@ -75,9 +76,10 @@
       (doseq [e es]
         (let [{:keys [x y]} @(ecs/e->c e :position)
               {:keys [dx dy]} @(ecs/e->c e :velocity)]
-          (swap! (ecs/e->c e :position)
-                 assoc
-                 :x (+ x dx) :y (+ y dy)))))}))
+          (ecs/c-swap! e :position
+                       assoc
+                       :x (+ x dx)
+                       :y (+ y dy)))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
@@ -133,7 +135,7 @@
 
 (defn make-engine [renderer stage]
   (ecs/engine {:entities
-               (vec (repeatedly 2000 #(new-ball (rand-int 400) (rand-int 400))))
+               (vec (repeatedly 1000 #(new-ball (rand-int 400) (rand-int 400))))
                :systems [bounce
                          move
                          render]

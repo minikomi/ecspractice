@@ -20,6 +20,10 @@
 (defn e->c [entity c-name]
   (get-in entity [:components c-name :properties]))
 
+(defn c-swap! [entity c-name f & args]
+  (.swap (get-in entity [:components c-name :properties])
+         f args))
+
 (defrecord Entity [id components])
 
 (defn e [components]
@@ -35,7 +39,8 @@
 (defn c [{:keys [id properties]}]
   (map->Component
    {:id id
-    :properties (atom (or properties {}))}))
+    :properties (volatile! (or properties {}))}))
+
 
 ;; [S]ystem
 ;; ----------------------------------------------------------------
@@ -65,7 +70,7 @@
   ([eng event-name]
    (event! eng event-name nil))
   ([eng event-name data]
-   (swap! (:event-bus eng) conj [event-name data])))
+   (vswap! (:event-bus eng) conj [event-name data])))
 
 ;; Engine
 ;; ----------------------------------------------------------------
@@ -75,7 +80,7 @@
 (defn engine [{:keys [entities event-handlers systems globals]}]
   (map->Engine
    {:frame 0
-    :event-bus (atom [])
+    :event-bus (volatile! [])
     :event-handlers (or event-handlers {})
     :globals (or globals nil)
     :entities (assoc-by-id {} (or entities []))
@@ -86,10 +91,10 @@
 
 (defn run-events [engine]
   (let [current-events @(:event-bus engine)]
-    (reset! (:event-bus engine) [])
+    (vreset! (:event-bus engine) [])
     (reduce
-     (fn [eng [event-type data]]
-       (if-let [handler (get-in eng [:event-handlers event-type])]
+     (fn [{:keys [event-handlers] :as eng} [event-type data]]
+       (if-let [handler (get event-handlers event-type nil)]
          (handler eng data)
          eng))
      engine
