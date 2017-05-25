@@ -11,15 +11,21 @@
 ;; components
 ;; ----------------------------------------------------------------
 
+(defrecord Position [x y])
+
 (defn new-position [x y]
   (ecs/c {:id :position
-          :properties {:x x
-                       :y y}}))
+          :properties (map->Position
+                       {:x x
+                        :y y})}))
+
+(defrecord Velocity [dx dy])
 
 (defn new-velocity [dx dy]
   (ecs/c {:id :velocity
-          :properties {:dx dx
-                       :dy dy}}))
+          :properties (map->Velocity
+                       {:dx dx
+                        :dy dy})}))
 
 ;; entities
 ;; ----------------------------------------------------------------
@@ -56,7 +62,9 @@
                {:keys [dx dy]} (ecs/get-component e :velocity)
                new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
                new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
-           (ecs/set-component e :velocity {:dx new-dx :dy new-dy})))
+           (ecs/update-component e :velocity
+                                 :dx new-dx
+                                 :dy new-dy)))
        es))}))
 
 (def move
@@ -68,9 +76,12 @@
     (fn [_ es]
       (mapv
        (fn [e]
-         (let [{:keys [x y]} (ecs/get-component e :position)
+         (let [{:keys [x y] :as pos} (ecs/get-component e :position)
                {:keys [dx dy]} (ecs/get-component e :velocity)]
-           (ecs/set-component e :position {:x (+ x dx) :y (+ y dy)})))
+           (ecs/update-component e
+                                 :position
+                                 :x (+ x dx)
+                                 :y (+ y dy))))
        es))}))
 
 (defn make-input-system [stage eng]
@@ -130,7 +141,8 @@
   (assoc-in engine [:globals :mouse] :up))
 
 (defn make-engine [renderer stage]
-  (ecs/engine {:entities [(new-ball (rand-int 400) (rand-int 400))]
+  (ecs/engine {:entities
+               (vec (repeatedly 400 #(new-ball (rand-int 400) (rand-int 400))))
                :systems [bounce
                          move
                          render]
