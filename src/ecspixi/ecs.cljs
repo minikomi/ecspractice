@@ -1,4 +1,5 @@
 (ns ecspixi.ecs
+  (:require-macros [ecspixi.ecs :refer [c-swap!]])
   (:require [clojure.set :as cs]))
 
 (def MAX_PRIORITY (.-Infinity js/window))
@@ -19,10 +20,6 @@
 
 (defn e->c [entity c-name]
   (get-in entity [:components c-name :properties]))
-
-(defn c-swap! [entity c-name f & args]
-  (.swap (get-in entity [:components c-name :properties])
-         f args))
 
 (defrecord Entity [id components])
 
@@ -78,7 +75,7 @@
 
 (defn engine [{:keys [entities event-handlers systems globals]}]
   (map->Engine
-   {:frame 0
+   {:frame (volatile! 0)
     :event-bus (volatile! [])
     :event-handlers (or event-handlers {})
     :globals (or globals nil)
@@ -86,7 +83,8 @@
     :systems (or (priority-sort systems) [])}))
 
 (defn frame-inc [engine]
-  (update engine :frame inc))
+  (vswap! (:frame engine) inc)
+  engine)
 
 (defn run-events [engine]
   (let [current-events @(:event-bus engine)]
@@ -109,13 +107,14 @@
 
 (defn run-systems [{:keys [entities systems] :as eng}]
   (doseq [system systems]
-    (let [xs (comp (map second)
-                   (filter
-                    (fn [e]
-                      (cs/superset?
-                       (-> e :components keys set)
-                       (:required-components system)))))]
-      ((:update-fn system) eng (into [] xs entities))))
+    ((:update-fn system) eng (into []
+                                   (comp (map second)
+                                         (filter
+                                          (fn [e]
+                                            (cs/superset?
+                                             (-> e :components keys set)
+                                             (:required-components system)))))
+                                   entities)))
   eng)
 
 (defn tick-engine [engine]
