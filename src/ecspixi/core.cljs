@@ -35,6 +35,10 @@
   (P.utils.rgb2hex (clj->js
                     [(+ 0.5 (rand 0.5)) (+ 0.5 (rand 0.5)) (+ 0.5 (rand 0.5))])))
 
+(defn set-attr [obj k v]
+  (gobj/set obj (name k) v)
+  obj)
+
 (defn new-ball [x y]
   (ecs/e
    [(new-position x y)
@@ -43,7 +47,7 @@
             :properties {:type :ball
                          :graph-obj (-> (P.Graphics.)
                                         (.beginFill (rand-col))
-                                        (.drawRect -2 -2 4 4)
+                                        (.drawCircle 0 0 4)
                                         (.endFill))}})]))
 
 ;; systems
@@ -55,16 +59,18 @@
     :priority 0
     :required-components #{:position :velocity}
     :update-fn
-    (fn [s es]
+    (fn bounce-update [s es]
       (doseq [e es]
         (let [{:keys [w h]} (-> s :globals)
               {:keys [x y]} @(ecs/e->c e :position)
-              {:keys [dx dy]} @(ecs/e->c e :velocity)
+              vel (ecs/e->c e :velocity)
+              {:keys [dx dy]} @vel
               new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
               new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
-          (ecs/c-swap! e :velocity
-                       assoc
-                       :dx new-dx :dy new-dy))))}))
+          (when (or (not= new-dx dx)
+                    (not= new-dy dy))
+              (vreset! vel
+                       (Velocity. new-dx new-dy))))))}))
 
 (def move
   (ecs/s
@@ -72,18 +78,17 @@
     :priority 1
     :required-components #{:position :velocity}
     :update-fn
-    (fn [_ es]
+    (fn move-update [_ es]
       (doseq [e es]
-        (let [{:keys [x y]} @(ecs/e->c e :position)
+        (let [pos (ecs/e->c e :position)
+              {:keys [x y]} @pos
               {:keys [dx dy]} @(ecs/e->c e :velocity)]
-          (ecs/c-swap! e :position
-                       assoc
-                       :x (+ x dx)
-                       :y (+ y dy)))))}))
+          (vreset! pos (Position. (+ x dx)
+                                  (+ y dy))))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
-  (set! (.-hitArea stage) (P.Rectangle. 0 0 400 400))
+  (set! (.-hitArea stage) (P.Rectangle. 0 0 (-> eng :globals :w) (-> eng :globals :h)))
   (.on stage "mousedown"
        (fn [ev]
          (ecs/event! eng
@@ -113,15 +118,22 @@
     :required-components #{:renderable :position}
     :update-fn
     (fn update-render [eng es]
-      (let [{:keys [stage renderer mouse]} (:globals eng)]
+      (let [{:keys [stage renderer mouse spr rt1 rt2]} (:globals eng)]
         (doseq [e es]
           (-> @(ecs/e->c e :renderable)
               :graph-obj
               (ensure-staged! stage)
               (set-position! @(ecs/e->c e :position))))
         (if (= :down mouse)
-          (set! (.-backgroundColor renderer) 0x00ffff)
-          (set! (.-backgroundColor renderer) 0x000000))
+          (do
+            (.render renderer stage @rt2)
+            (let [tmp @rt1]
+              (vreset! rt1 @rt2)
+              (vreset! rt2 tmp))
+            (set! (.-texture spr) @rt1))
+          (do
+            (.clearRenderTexture renderer @rt1 0x000000)
+            (.clearRenderTexture renderer @rt2 0x000000)))
         (.render renderer stage)))}))
 
 ;; Scaffolding
@@ -133,19 +145,37 @@
 (defn mouse-up-handler [engine _]
   (assoc-in engine [:globals :mouse] :up))
 
+(def W (.. js/window -document -body -clientWidth))
+(def H (.. js/window -document -body -clientHeight))
+
 (defn make-engine [renderer stage]
-  (ecs/engine {:entities
-               (vec (repeatedly 1000 #(new-ball (rand-int 400) (rand-int 400))))
-               :systems [bounce
-                         move
-                         render]
-               :event-handlers {:mouse-down mouse-down-handler
-                                :mouse-up mouse-up-handler}
-               :globals {:renderer renderer
-                         :stage stage
-                         :mouse :up
-                         :w 400
-                         :h 400}}))
+
+  (let [rt1 (.create P.RenderTexture
+              (.-width renderer)
+              (.-height renderer))
+        rt2 (.create P.RenderTexture
+             (.-width renderer)
+             (.-height renderer))
+        spr (P.Sprite. rt1)]
+      (.addChild stage spr)
+
+    (ecs/engine {:entities
+                  (vec (repeatedly 600 #(new-ball (rand-int W) (rand-int H))))
+                  :systems [bounce
+                            move
+                            render]
+                  :event-handlers {:mouse-down mouse-down-handler
+                                    :mouse-up mouse-up-handler}
+                  :globals {:renderer renderer
+                            :stage stage
+                            :mouse :up
+                            :w (.-width renderer)
+                            :h (.-height renderer)
+                            :rt1 (volatile! rt1)
+                            :spr spr
+                            :rt2 (volatile! rt2)}})))
+
+
 
 (defn game []
   (let [dom-node (atom false)
@@ -155,7 +185,7 @@
       :component-did-mount
       (fn [this]
         (reset! dom-node (r/dom-node this))
-        (let [renderer (.autoDetectRenderer P 400 400)
+        (let [renderer (.autoDetectRenderer P W H)
               stage (P.Container.)
               eng (make-engine renderer stage)]
           (make-input-system stage eng)
