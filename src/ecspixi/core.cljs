@@ -118,7 +118,7 @@
     :required-components #{:renderable :position}
     :update-fn
     (fn update-render [eng es]
-      (let [{:keys [stage renderer mouse spr rt1 rt2]} (:globals eng)]
+      (let [{:keys [stage renderer mouse spr textures]} (:globals eng)]
         (doseq [e es]
           (-> @(ecs/e->c e :renderable)
               :graph-obj
@@ -126,14 +126,12 @@
               (set-position! @(ecs/e->c e :position))))
         (if (= :down mouse)
           (do
-            (.render renderer stage @rt2)
-            (let [tmp @rt1]
-              (vreset! rt1 @rt2)
-              (vreset! rt2 tmp))
-            (set! (.-texture spr) @rt1))
+            (.render renderer stage (first @textures))
+            (set! (.-texture spr) (first @textures))
+            (vreset! textures [(second @textures) (first @textures)]))
           (do
-            (.clearRenderTexture renderer @rt1 0x000000)
-            (.clearRenderTexture renderer @rt2 0x000000)))
+            (.clearRenderTexture renderer (first @textures) 0x000000)
+            (.clearRenderTexture renderer (second @textures) 0x000000)))
         (.render renderer stage)))}))
 
 ;; Scaffolding
@@ -171,9 +169,9 @@
                             :mouse :up
                             :w (.-width renderer)
                             :h (.-height renderer)
-                            :rt1 (volatile! rt1)
-                            :spr spr
-                            :rt2 (volatile! rt2)}})))
+                            :textures (volatile! [rt1 rt2])
+                            :spr spr}})))
+
 
 
 

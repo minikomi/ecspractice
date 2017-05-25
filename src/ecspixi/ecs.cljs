@@ -107,14 +107,15 @@
 
 (defn run-systems [{:keys [entities systems] :as eng}]
   (doseq [system systems]
-    ((:update-fn system) eng (into []
-                                   (comp (map second)
-                                         (filter
-                                          (fn [e]
-                                            (cs/superset?
-                                             (-> e :components keys set)
-                                             (:required-components system)))))
-                                   entities)))
+    (->> entities
+         (into []
+               (comp (map second)
+                     (filter
+                      (fn [e]
+                        (cs/superset?
+                         (-> e :components keys set)
+                         (:required-components system))))))
+         ((:update-fn system) eng)))
   eng)
 
 (defn tick-engine [engine]
@@ -122,7 +123,7 @@
 
 (defn run-engine! [running! engine]
   (let [loop-fn
-        (fn loop-fn [engine]
+        (fn loop-fn [eng]
           (when @running!
-            (js/requestAnimationFrame #(loop-fn (tick-engine engine)))))]
+            (js/requestAnimationFrame #(loop-fn (tick-engine eng)))))]
     (loop-fn engine)))
