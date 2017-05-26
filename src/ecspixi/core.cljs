@@ -16,15 +16,14 @@
 (defn new-position [x y]
   (ecs/c {:id :position
           :properties
-          (map->Position
-           {:x x
-            :y y})}))
+          (volatile! {:x x
+                      :y y})}))
 
 (defrecord Velocity [dx dy])
 
 (defn new-velocity [dx dy]
   (ecs/c {:id :velocity
-          :properties (map->Velocity
+          :properties (volatile!
                        {:dx dx
                         :dy dy})}))
 
@@ -39,16 +38,19 @@
   (gobj/set obj (name k) v)
   obj)
 
-(defn new-ball [x y]
-  (ecs/e
-   [(new-position x y)
-    (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10)) 5))
-    (ecs/c {:id :renderable
-            :properties {:type :ball
-                         :graph-obj (-> (P.Graphics.)
-                                        (.beginFill (rand-col))
-                                        (.drawCircle 0 0 4)
-                                        (.endFill))}})]))
+(defn new-ball [stage x y]
+  (let [ball (-> (P.Graphics.)
+                 (.beginFill (rand-col))
+                 (.drawCircle 0 0 4)
+                 (.endFill))]
+   (.addChild stage ball)
+   (ecs/e
+    [(new-position x y)
+     (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10)) 5))
+     (ecs/c {:id :renderable
+             :properties {:type :ball
+                          :graph-obj ball}})])))
+
 
 ;; systems
 ;; ----------------------------------------------------------------
@@ -69,8 +71,7 @@
               new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
           (when (or (not= new-dx dx)
                     (not= new-dy dy))
-              (vreset! vel
-                       (Velocity. new-dx new-dy))))))}))
+            (vreset! vel (Velocity. new-dx new-dy))))))}))
 
 (def move
   (ecs/s
@@ -83,8 +84,9 @@
         (let [pos (ecs/e->c e :position)
               {:keys [x y]} @pos
               {:keys [dx dy]} @(ecs/e->c e :velocity)]
-          (vreset! pos (Position. (+ x dx)
-                                  (+ y dy))))))}))
+          (vreset! pos (Position.
+                        (+ x dx)
+                        (+ y dy))))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
@@ -102,9 +104,8 @@
   (gobj/set obj k v)
   obj)
 
-(defn set-position! [graph-obj pos]
-  (set! (.-position graph-obj) #js{:x (:x pos)
-                                   :y (:y pos)}))
+(defn set-position! [graph-obj {:keys [x y]}]
+  (.set (.-position graph-obj) x y))
 
 (defn ensure-staged! [graph-obj stage]
   (when-not (gobj/get graph-obj "staged")
@@ -120,18 +121,9 @@
     (fn update-render [eng es]
       (let [{:keys [stage renderer mouse spr textures]} (:globals eng)]
         (doseq [e es]
-          (-> @(ecs/e->c e :renderable)
+          (-> (ecs/e->c e :renderable)
               :graph-obj
-              (ensure-staged! stage)
               (set-position! @(ecs/e->c e :position))))
-        (if (= :down mouse)
-          (do
-            (.render renderer stage (first @textures))
-            (set! (.-texture spr) (first @textures))
-            (vreset! textures [(second @textures) (first @textures)]))
-          (do
-            (.clearRenderTexture renderer (first @textures) 0x000000)
-            (.clearRenderTexture renderer (second @textures) 0x000000)))
         (.render renderer stage)))}))
 
 ;; Scaffolding
@@ -158,7 +150,7 @@
       (.addChild stage spr)
 
     (ecs/engine {:entities
-                  (vec (repeatedly 600 #(new-ball (rand-int W) (rand-int H))))
+                  (vec (repeatedly 3000 #(new-ball stage (rand-int W) (rand-int H))))
                   :systems [bounce
                             move
                             render]
@@ -171,9 +163,6 @@
                             :h (.-height renderer)
                             :textures (volatile! [rt1 rt2])
                             :spr spr}})))
-
-
-
 
 (defn game []
   (let [dom-node (atom false)

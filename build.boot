@@ -59,6 +59,15 @@
                                           :closure-defines {'goog.DEBUG false}}})
   identity)
 
+(deftask optimized []
+  (task-options! cljs {:optimizations :advanced
+                       :source-map false
+                       :compiler-options {:elide-asserts true
+                                          :pretty-print true
+                                          :pseudo-names true
+                                          :closure-defines {'goog.DEBUG false}}})
+  identity)
+
 (deftask dev []
   (comp
    (development)
@@ -70,6 +79,13 @@
            :ws-host "0.0.0.0"
            :asset-path "/public")
    (build)))
+
+(deftask pseudo []
+  (comp
+   (optimized)
+   (build)
+   (sift :include #{#"\.out" #"\.cljs\.edn$" #"^\." #"/\."} :invert true)
+   (target)))
 
 (deftask prod []
   (comp

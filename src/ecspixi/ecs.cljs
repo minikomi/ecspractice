@@ -1,6 +1,7 @@
 (ns ecspixi.ecs
   (:require-macros [ecspixi.ecs :refer [c-swap!]])
-  (:require [clojure.set :as cs]))
+  (:require [clojure.set :as cs]
+            [goog.object :as gobj]))
 
 (def MAX_PRIORITY (.-Infinity js/window))
 
@@ -21,12 +22,13 @@
 (defn e->c [entity c-name]
   (get-in entity [:components c-name :properties]))
 
-(defrecord Entity [id components])
+(defrecord Entity [id components component-set])
 
 (defn e [components]
   (map->Entity
    {:id (random-uuid)
-    :components (assoc-by-id {} (or components []))}))
+    :components (assoc-by-id {} (or components []))
+    :component-set (->> components (map :id) sort vec clj->js)}))
 
 ;; [C]omponent
 ;; ----------------------------------------------------------------
@@ -36,7 +38,7 @@
 (defn c [{:keys [id properties]}]
   (map->Component
    {:id id
-    :properties (volatile! (or properties {}))}))
+    :properties (or properties {})}))
 
 ;; [S]ystem
 ;; ----------------------------------------------------------------
@@ -49,7 +51,9 @@
     :priority (or priority MAX_PRIORITY)
     :update-fn update-fn
     :should-run (or should-run (constantly true))
-    :required-components (or required-components (constantly true))}))
+    :required-components (->> (or required-components [])
+                              sort
+                              clj->js)}))
 
 (defn priority-sort [systems]
   (sort-by #(compare (:priority %2) (:priority %1))
@@ -74,13 +78,15 @@
 (defrecord Engine [frame globals event-bus event-handlers entities systems])
 
 (defn engine [{:keys [entities event-handlers systems globals]}]
-  (map->Engine
-   {:frame (volatile! 0)
-    :event-bus (volatile! [])
-    :event-handlers (or event-handlers {})
-    :globals (or globals nil)
-    :entities (assoc-by-id {} (or entities []))
-    :systems (or (priority-sort systems) [])}))
+  (let [initial-systems (or (priority-sort systems) [])]
+    (map->Engine
+     {:frame (volatile! 0)
+      :event-bus (volatile! [])
+      :event-handlers (or event-handlers {})
+      :globals (or globals nil)
+      :entities (assoc-by-id {} (or entities []))
+      :systems initial-systems
+      :systems-arr (clj->js initial-systems)})))
 
 (defn frame-inc [engine]
   (vswap! (:frame engine) inc)
@@ -105,17 +111,19 @@
       required-components))
    (->> entities (mapv second))))
 
-(defn run-systems [{:keys [entities systems] :as eng}]
-  (doseq [system systems]
-    (->> entities
-         (into []
-               (comp (map second)
-                     (filter
-                      (fn [e]
-                        (cs/superset?
-                         (-> e :components keys set)
-                         (:required-components system))))))
-         ((:update-fn system) eng)))
+(defn run-systems [{:keys [entities systems-arr] :as eng}]
+  (.forEach systems-arr
+            (fn [system]
+              ((gobj/get system "update-fn") eng
+               (keep
+                (fn [[_ e]]
+                  (let [ecs (-> e :component-set)]
+                    (when (.every
+                           (gobj/get system "required-components")
+                           #(<= 0 (.indexOf ecs %)))
+
+                      e)))
+                entities))))
   eng)
 
 (defn tick-engine [engine]
