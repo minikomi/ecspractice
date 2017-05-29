@@ -61,9 +61,9 @@
     :priority 0
     :required-components #{:position :velocity}
     :update-fn
-    (fn bounce-update [s es]
+    (fn bounce-update [engine es]
       (doseq [e es]
-        (let [{:keys [w h]} (-> s :globals)
+        (let [{:keys [w h]} (ecs/get-globals engine)
               {:keys [x y]} @(ecs/e->c e :position)
               vel (ecs/e->c e :velocity)
               {:keys [dx dy]} @vel
@@ -90,7 +90,8 @@
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
-  (set! (.-hitArea stage) (P.Rectangle. 0 0 (-> eng :globals :w) (-> eng :globals :h)))
+  (set! (.-hitArea stage)
+        (P.Rectangle. 0 0 (-> eng :globals :w) (-> eng :globals :h)))
   (.on stage "mousedown"
        (fn [ev]
          (ecs/event! eng
@@ -119,7 +120,7 @@
     :required-components #{:renderable :position}
     :update-fn
     (fn update-render [eng es]
-      (let [{:keys [stage renderer mouse spr textures]} (:globals eng)]
+      (let [{:keys [stage renderer mouse spr textures]} (ecs/get-globals eng)]
         (doseq [e es]
           (-> (ecs/e->c e :renderable)
               :graph-obj
@@ -130,9 +131,11 @@
 ;; ----------------------------------------------------------------
 
 (defn mouse-down-handler [engine _]
+  (println @(:frame engine))
   (assoc-in engine [:globals :mouse] :down))
 
 (defn mouse-up-handler [engine _]
+
   (assoc-in engine [:globals :mouse] :up))
 
 (def W (.. js/window -document -body -clientWidth))
@@ -149,20 +152,20 @@
         spr (P.Sprite. rt1)]
       (.addChild stage spr)
 
-    (ecs/engine {:entities
-                  (vec (repeatedly 3000 #(new-ball stage (rand-int W) (rand-int H))))
-                  :systems [bounce
-                            move
-                            render]
-                  :event-handlers {:mouse-down mouse-down-handler
+      (ecs/engine {:entities
+                   (vec (repeatedly 5000 #(new-ball stage (rand-int W) (rand-int H))))
+                   :systems [bounce
+                             move
+                             render]
+                   :event-handlers {:mouse-down mouse-down-handler
                                     :mouse-up mouse-up-handler}
-                  :globals {:renderer renderer
-                            :stage stage
-                            :mouse :up
-                            :w (.-width renderer)
-                            :h (.-height renderer)
-                            :textures (volatile! [rt1 rt2])
-                            :spr spr}})))
+                   :globals {:renderer renderer
+                             :stage stage
+                             :mouse :up
+                             :w (.-width renderer)
+                             :h (.-height renderer)
+                             :textures (volatile! [rt1 rt2])
+                             :spr spr}})))
 
 (defn game []
   (let [dom-node (atom false)

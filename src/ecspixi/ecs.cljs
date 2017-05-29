@@ -1,7 +1,7 @@
 (ns ecspixi.ecs
   (:require-macros [ecspixi.ecs :refer [c-swap!]])
   (:require [clojure.set :as cs]
-            [goog.object :as gobj]))
+            [goog.object :as o]))
 
 (def MAX_PRIORITY (.-Infinity js/window))
 
@@ -75,63 +75,81 @@
 ;; Engine
 ;; ----------------------------------------------------------------
 
-(defrecord Engine [frame globals event-bus event-handlers entities systems])
-
-(defn engine [{:keys [entities event-handlers systems globals]}]
-  (let [initial-systems (or (priority-sort systems) [])]
-    (map->Engine
-     {:frame (volatile! 0)
-      :event-bus (volatile! [])
-      :event-handlers (or event-handlers {})
-      :globals (or globals nil)
-      :entities (assoc-by-id {} (or entities []))
-      :systems initial-systems
-      :systems-arr (clj->js initial-systems)})))
+(defprotocol IEngine
+  (init [o])
+  (get-systems [o])
+  (get-globals [o])
+  (get-entities [o])
+  (run-engine [o]))
 
 (defn frame-inc [engine]
-  (vswap! (:frame engine) inc)
-  engine)
+  (set! (.-frame engine) (+ 1 (.-frame engine))))
 
 (defn run-events [engine]
-  (let [current-events @(:event-bus engine)]
-    (vreset! (:event-bus engine) [])
-    (reduce
-     (fn [{:keys [event-handlers] :as eng} [event-type data]]
-       (if-let [handler (get event-handlers event-type nil)]
-         (handler eng data)
-         eng))
-     engine
-     current-events)))
+  (let [current-events (o/get engine "event-bus")]
+    ;;; TODO EVENT HANDLING
+    (o/set engine "event-bus" #js[])))
 
-(defn filter-entities [required-components entities]
-  (filterv
-   (fn [e]
-     (cs/superset?
-      (-> e :components keys set)
-      required-components))
-   (->> entities (mapv second))))
-
-(defn run-systems [{:keys [entities systems-arr] :as eng}]
-  (.forEach systems-arr
+(defn run-systems [engine]
+  (.forEach (get-systems engine)
             (fn [system]
-              ((gobj/get system "update-fn") eng
-               (keep
-                (fn [[_ e]]
+              ((o/get system "update-fn") engine
+               (.filter
+                (get-entities engine)
+                (fn [e]
                   (let [ecs (-> e :component-set)]
                     (when (.every
-                           (gobj/get system "required-components")
+                           (o/get system "required-components")
                            #(<= 0 (.indexOf ecs %)))
+                      e))))))))
 
-                      e)))
-                entities))))
-  eng)
 
-(defn tick-engine [engine]
-  (-> engine frame-inc run-events run-systems))
+(deftype ECSEngine [event-handlers globals entities systems]
+  Object
+  (toString [this]
+    (str
+     (.-globals this)))
+  IEngine
+  (init [this]
+    (set! (.-frame this) 0)
+    (set! (.-event-bus #js[])))
+  (get-systems [this]
+    systems)
+  (get-entities [this]
+    entities)
+  (get-globals [this]
+    globals)
+  (run-engine [this]
+    (doto this
+      (frame-inc)
+      (run-systems))))
 
-(defn run-engine! [running! engine]
+(defn shallow-clj->arr [coll]
+  (let [arr (array)]
+    (doseq [v coll]
+      (.push arr v))
+    arr))
+
+(deftype User [firstname lastname]
+  Object
+  (toString [this]
+    (str
+     (.-firstname this)
+     " "
+     (.-lastname this))))
+
+(defn engine [{:keys [event-handlers globals entities systems]}]
+  (let [eng (ECSEngine. (clj->js (or event-handlers {}))
+                        (or globals {})
+                        (or (shallow-clj->arr entities) #js[])
+                        (clj->js (or systems [])))]
+    (init eng)
+    eng))
+
+(defn run-engine! [running! eng]
   (let [loop-fn
-        (fn loop-fn [eng]
+        (fn loop-fn []
           (when @running!
-            (js/requestAnimationFrame #(loop-fn (tick-engine eng)))))]
-    (loop-fn engine)))
+            (run-engine eng)
+            (js/requestAnimationFrame loop-fn)))]
+       (loop-fn)))
