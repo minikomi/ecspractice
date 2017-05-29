@@ -83,9 +83,14 @@
 (deftask pseudo []
   (comp
    (optimized)
-   (build)
-   (sift :include #{#"\.out" #"\.cljs\.edn$" #"^\." #"/\."} :invert true)
-   (target)))
+   (cider)
+   (serve)
+   (watch)
+   (reload :on-jsload 'ecspixi.core/init
+           :ws-host "0.0.0.0"
+           :asset-path "/public")
+   (build)))
+
 
 (deftask prod []
   (comp

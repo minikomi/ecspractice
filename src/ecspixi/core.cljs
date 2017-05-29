@@ -11,21 +11,15 @@
 ;; components
 ;; ----------------------------------------------------------------
 
-(defrecord Position [x y])
-
 (defn new-position [x y]
   (ecs/c {:id :position
-          :properties
-          (volatile! {:x x
-                      :y y})}))
-
-(defrecord Velocity [dx dy])
+          :properties {:x x
+                       :y y}}))
 
 (defn new-velocity [dx dy]
   (ecs/c {:id :velocity
-          :properties (volatile!
-                       {:dx dx
-                        :dy dy})}))
+          :properties {:dx dx
+                       :dy dy}}))
 
 ;; entities
 ;; ----------------------------------------------------------------
@@ -38,11 +32,23 @@
   (gobj/set obj (name k) v)
   obj)
 
+(def ct
+  (let [c  (.createElement js/document "canvas")]
+    (set! (.-length c) 800)
+    (set! (.-height c) 8)
+    (.fromCanvas P.BaseTexture c)))
+
+(def textures
+  (for [n (range 100)]
+    (P.Texture. ct
+               (-> (P.Graphics.)
+                   (.beginFill (rand-col))
+                   (.drawCircle (* n 8) 0 4)
+                   (.endFill)))))
+
 (defn new-ball [stage x y]
-  (let [ball (-> (P.Graphics.)
-                 (.beginFill (rand-col))
-                 (.drawCircle 0 0 4)
-                 (.endFill))]
+  (print (rand-nth textures))
+  (let [ball (-> (P.Sprite. (rand-nth textures)))]
    (.addChild stage ball)
    (ecs/e
     [(new-position x y)
@@ -64,14 +70,14 @@
     (fn bounce-update [engine es]
       (doseq [e es]
         (let [{:keys [w h]} (ecs/get-globals engine)
-              {:keys [x y]} @(ecs/e->c e :position)
-              vel (ecs/e->c e :velocity)
+              {:keys [x y]} @(ecs/get-component e :position)
+              vel (ecs/get-component e :velocity)
               {:keys [dx dy]} @vel
               new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
               new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
           (when (or (not= new-dx dx)
                     (not= new-dy dy))
-            (vreset! vel (Velocity. new-dx new-dy))))))}))
+            (vswap! vel assoc :dx new-dx :dy new-dy)))))}))
 
 (def move
   (ecs/s
@@ -81,12 +87,10 @@
     :update-fn
     (fn move-update [_ es]
       (doseq [e es]
-        (let [pos (ecs/e->c e :position)
+        (let [pos (ecs/get-component e :position)
               {:keys [x y]} @pos
-              {:keys [dx dy]} @(ecs/e->c e :velocity)]
-          (vreset! pos (Position.
-                        (+ x dx)
-                        (+ y dy))))))}))
+              {:keys [dx dy]} @(ecs/get-component e :velocity)]
+          (vswap! pos assoc :x (+ x dx) :y (+ y dy)))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
@@ -105,9 +109,6 @@
   (gobj/set obj k v)
   obj)
 
-(defn set-position! [graph-obj {:keys [x y]}]
-  (.set (.-position graph-obj) x y))
-
 (defn ensure-staged! [graph-obj stage]
   (when-not (gobj/get graph-obj "staged")
     (do (gobj/set graph-obj "staged" true)
@@ -122,16 +123,16 @@
     (fn update-render [eng es]
       (let [{:keys [stage renderer mouse spr textures]} (ecs/get-globals eng)]
         (doseq [e es]
-          (-> (ecs/e->c e :renderable)
-              :graph-obj
-              (set-position! @(ecs/e->c e :position))))
+          (let [pos @(ecs/get-component e :position)]
+           (set! (.-position (:graph-obj @(ecs/get-component e :renderable)))
+                 #js{:x (:x pos)
+                     :y (:y pos)})))
         (.render renderer stage)))}))
 
 ;; Scaffolding
 ;; ----------------------------------------------------------------
 
 (defn mouse-down-handler [engine _]
-  (println @(:frame engine))
   (assoc-in engine [:globals :mouse] :down))
 
 (defn mouse-up-handler [engine _]
@@ -153,7 +154,7 @@
       (.addChild stage spr)
 
       (ecs/engine {:entities
-                   (vec (repeatedly 5000 #(new-ball stage (rand-int W) (rand-int H))))
+                   (vec (repeatedly 10000 #(new-ball stage (rand-int W) (rand-int H))))
                    :systems [bounce
                              move
                              render]

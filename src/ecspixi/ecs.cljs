@@ -8,7 +8,7 @@
 (defn assoc-by-id
   ([items] (assoc-by-id {} items))
   ([item-map items]
-   (reduce #(assoc % (:id %2) %2) item-map items)))
+   (reduce #(assoc % (.-id %2) %2) item-map items)))
 
 ;; [E]ntity
 ;; ----------------------------------------------------------------
@@ -20,48 +20,71 @@
         (get c-name false))))
 
 (defn e->c [entity c-name]
-  (get-in entity [:components c-name :properties]))
+  (get-in entity [:components c-name]))
 
-(defrecord Entity [id components component-set])
+(defprotocol IECSEntity
+  (get-component-set [_])
+  (get-component [_ k]))
+
+(deftype Entity [id components component-set]
+  IECSEntity
+  (get-component-set [_]
+    component-set)
+  (get-component [_ k]
+    (o/get components (name k))))
 
 (defn e [components]
-  (map->Entity
-   {:id (random-uuid)
-    :components (assoc-by-id {} (or components []))
-    :component-set (->> components (map :id) sort vec clj->js)}))
+  (Entity.
+   (random-uuid)
+   (clj->js (assoc-by-id {} (or components [])))
+   (->> components
+        (map #(vector (.-id %) true))
+        (into {}) clj->js)))
 
 ;; [C]omponent
 ;; ----------------------------------------------------------------
 
-(defrecord Component [id properties])
+(deftype Component [id ^:mutable properties]
+  IVolatile
+  (-vreset! [_ new-properties]
+    (set! properties new-properties))
+  IDeref
+  (-deref [_] properties))
 
 (defn c [{:keys [id properties]}]
-  (map->Component
-   {:id id
-    :properties (or properties {})}))
+  (Component. id (or properties {})))
 
 ;; [S]ystem
 ;; ----------------------------------------------------------------
 
-(defrecord System [id priority update-fn should-run required-components])
+(defprotocol IECSSystem
+  (get-should-run [_])
+  (get-update-fn [_])
+  (get-required-components [_])
+  (get-priority [this]))
+
+(deftype System [id priority update-fn should-run required-components]
+  IECSSystem
+  (get-priority [this]
+    priority)
+  (get-should-run [_]
+    should-run)
+  (get-update-fn [_]
+    update-fn)
+  (get-required-components [_]
+    required-components))
 
 (defn s [{:keys [id priority update-fn should-run required-components]}]
-  (map->System
-   {:id id
-    :priority (or priority MAX_PRIORITY)
-    :update-fn update-fn
-    :should-run (or should-run (constantly true))
-    :required-components (->> (or required-components [])
-                              sort
-                              clj->js)}))
+  (System. id
+           (or priority MAX_PRIORITY)
+           update-fn
+           (or should-run (constantly true))
+           (->>
+            (or required-components [])
+            clj->js)))
 
 (defn priority-sort [systems]
-  (sort-by #(compare (:priority %2) (:priority %1))
-           systems))
-
-(defn add-system [engine system]
-  (update engine :systems
-          #(-> % (conj system) priority-sort)))
+  (sort-by get-priority systems))
 
 ;; event bus
 ;; ----------------------------------------------------------------
@@ -76,7 +99,6 @@
 ;; ----------------------------------------------------------------
 
 (defprotocol IEngine
-  (init [o])
   (get-systems [o])
   (get-globals [o])
   (get-entities [o])
@@ -93,26 +115,27 @@
 (defn run-systems [engine]
   (.forEach (get-systems engine)
             (fn [system]
-              ((o/get system "update-fn") engine
+              ((get-update-fn system) engine
                (.filter
                 (get-entities engine)
                 (fn [e]
-                  (let [ecs (-> e :component-set)]
-                    (when (.every
-                           (o/get system "required-components")
-                           #(<= 0 (.indexOf ecs %)))
-                      e))))))))
+                  (let [ecs (get-component-set e)]
+                    (.every
+                     (get-required-components system)
+                     #(o/get ecs %))))))))
+  nil)
 
 
-(deftype ECSEngine [event-handlers globals entities systems]
+(deftype ECSEngine [event-handlers
+                    ^:mutable globals
+                    ^:mutable entities
+                    ^:mutable systems
+                    ^:mutable frame]
   Object
   (toString [this]
     (str
      (.-globals this)))
   IEngine
-  (init [this]
-    (set! (.-frame this) 0)
-    (set! (.-event-bus #js[])))
   (get-systems [this]
     systems)
   (get-entities [this]
@@ -142,8 +165,10 @@
   (let [eng (ECSEngine. (clj->js (or event-handlers {}))
                         (or globals {})
                         (or (shallow-clj->arr entities) #js[])
-                        (clj->js (or systems [])))]
-    (init eng)
+                        (clj->js (or systems []))
+                        0)]
+
+
     eng))
 
 (defn run-engine! [running! eng]
@@ -152,4 +177,4 @@
           (when @running!
             (run-engine eng)
             (js/requestAnimationFrame loop-fn)))]
-       (loop-fn)))
+    (loop-fn)))
