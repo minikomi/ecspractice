@@ -63,7 +63,7 @@
   (get-required-components [_])
   (get-priority [this]))
 
-(deftype System [id priority update-fn should-run required-components]
+(deftype System [id priority update-fn should-run required-components entity-filter]
   IECSSystem
   (get-priority [this]
     priority)
@@ -75,13 +75,16 @@
     required-components))
 
 (defn s [{:keys [id priority update-fn should-run required-components]}]
-  (System. id
-           (or priority MAX_PRIORITY)
-           update-fn
-           (or should-run (constantly true))
-           (->>
-            (or required-components [])
-            clj->js)))
+  (let [rc-arr (clj->js (or (vec required-components) []))]
+    (System. id
+             (or priority MAX_PRIORITY)
+             update-fn
+             (or should-run (constantly true))
+             required-components
+             (fn [e]
+               (.every
+                rc-arr
+                #(aget (.-component-set e) %))))))
 
 (defn priority-sort [systems]
   (sort-by get-priority systems))
@@ -112,17 +115,10 @@
 (defn run-systems [engine]
   (.forEach (.-systems engine)
             (fn [system]
-              ((get-update-fn system) engine
-                                      (.filter
-                                       (.-entities engine)
-                                       (fn [e]
-                                         (let [ecs (.-component-set e)
-                                               rc (.-required-components system)
-                                               lookup (fn [c]
-                                                        (aget ecs c))]
-                                           (.every
-                                            rc
-                                            lookup)))))))
+              ((.-update-fn system) engine
+               (.filter
+                (.-entities engine)
+                (.-entity-filter system)))))
 
   nil)
 

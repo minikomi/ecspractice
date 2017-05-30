@@ -60,12 +60,12 @@
                   (let [w (:w (.-globals engine) 0)
                         h (:h (.-globals engine) 0)
                         pos @(gobj/get (.-components e)  "position")
-                        x (.-x pos)
-                        y (.-y pos)
+                        x (aget pos "x")
+                        y (aget pos "y")
                         vel-at (gobj/get (.-components e) "velocity")
                         vel @vel-at
-                        dx (.-dx vel)
-                        dy (.-dy vel)
+                        dx (aget vel "dx")
+                        dy (aget vel "dy")
                         new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
                         new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
                     (when (or (not (identical? new-dx dx))
@@ -83,11 +83,11 @@
                 (fn [e]
                   (let [pos-at (ecs/get-component e :position)
                         pos @pos-at
-                        x (.-x pos)
-                        y (.-y pos)
+                        x (aget pos "x")
+                        y (aget pos "y")
                         vel @(ecs/get-component e :velocity)
-                        dx (.-dx vel)
-                        dy (.-dy vel)]
+                        dx (aget vel "dx")
+                        dy (aget vel "dy")]
                     (vreset! pos-at (Position. (+ x dx)
                                                (+ y dy)))))))}))
 
