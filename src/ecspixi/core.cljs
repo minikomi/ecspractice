@@ -59,16 +59,15 @@
             h (:h (.-globals engine))]
         (.forEach es
                   (fn bounce-inner [e]
-                    (let[pos @(gobj/get (.-components e)  "position")
-                         x (.-x pos)
-                         y (.-y pos)
-                         vel-at (gobj/get (.-components e) "velocity")
-                         vel @vel-at
-                         dx (.-dx vel)
-                         dy (.-dy vel)
-                         new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
-                         new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
-                      (vreset! vel-at (Velocity. new-dx new-dy)))))))}))
+                    (let [pos @(:position e)
+                          x (.-x pos)
+                          y (.-y pos)
+                          vel @(:velocity e)
+                          dx (.-dx vel)
+                          dy (.-dy vel)
+                          new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
+                          new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
+                      (vreset! (:velocity e) (Velocity. new-dx new-dy)))))))}))
 
 (def move
   (ecs/s
@@ -79,15 +78,13 @@
     (fn move-update [_ es]
       (.forEach es
                 (fn [e]
-                  (let [pos-at (gobj/get (.-components e) "position")
-                        pos @pos-at
+                  (let [pos @(:position e)
                         x (.-x pos)
                         y (.-y pos)
-                        vel @(gobj/get (.-components e) "velocity")
+                        vel @(:velocity e)
                         dx (.-dx vel)
                         dy (.-dy vel)]
-                    (vreset! pos-at (Position. (+ x dx)
-                                               (+ y dy)))))))}))
+                    (vreset! (:position e) (Position. (+ x dx) (+ y dy)))))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
@@ -117,13 +114,10 @@
     :update-fn
     (fn update-render [eng es]
       (let [{:keys [stage renderer mouse spr]} (.-globals eng)]
-        (.forEach es
-                  (fn [e]
-                    (let [pos @(gobj/get (.-components e) "position")
-                          go (.-graph-obj @(gobj/get (.-components e) "renderable"))]
-                      (.set (.-position go)
-                            (.-x pos)
-                            (.-y pos)))))
+        (doseq [e es]
+          (let [pos @(:position e)
+                go (.-graph-obj @(:renderable e))]
+            (.set (.-position go) (.-x pos) (.-y pos))))
         (.render renderer stage)))}))
 
 ;; Scaffolding
@@ -132,25 +126,22 @@
 (defn mouse-down-handler [engine pos]
   (let [w (:w (.-globals engine))
         h (:h (.-globals engine))
-        stage (:stage (.-globals engine))]
+        stage (:stage (.-globals engine))
+        entities (.-entities engine)]
     (doseq [_ (range 50)]
       (.push (.-entities engine)
-            (new-bunny stage
-                        (:x pos)
-                        (:y pos))))
-    (when (< 2000 (.-length (.-entities engine)))
-      (let [n (- (.-length (.-entities engine)) 2000)
-            removed (.slice (.-entities engine) 0 n)
-            remain (.slice (.-entities engine) n)]
+            (new-bunny stage (:x pos) (:y pos))))
+    (when (< 2000 (.-length entities))
+      (let [n (- (.-length entities) 2000)
+            removed (.slice entities 0 n)
+            remain (.slice entities n)]
         (doseq [e removed]
-          (.removeChild stage (.-graph-obj @(gobj/get (.-components e) "renderable"))))
+          (.removeChild stage (.-graph-obj @(e :renderable))))
         (set! (.-entities engine) remain)))))
 
 
 
 (defn mouse-up-handler [engine _])
-
-
 
 (defn make-engine [renderer stage]
    (ecs/engine {:entities

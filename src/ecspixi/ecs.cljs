@@ -23,13 +23,14 @@
   (get-in entity [:components c-name]))
 
 (defprotocol IECSEntity
-  (get-component-set [_])
   (get-component [_ k]))
 
 (deftype Entity [id components component-set]
+  ILookup
+  (-lookup [this k] (-lookup this k nil))
+  (-lookup [this k not-found]
+    (get-component this k))
   IECSEntity
-  (get-component-set [_]
-    component-set)
   (get-component [_ k]
     (o/get components (name k))))
 
@@ -48,7 +49,7 @@
 (deftype Component [id ^:mutable properties]
   IVolatile
   (-vreset! [_ new-properties]
-    (set! properties new-properties))
+            (set! properties new-properties))
   IDeref
   (-deref [_] properties))
 
@@ -67,13 +68,13 @@
 (deftype System [id priority update-fn should-run required-components entity-filter]
   IECSSystem
   (get-priority [this]
-    priority)
+                priority)
   (get-should-run [_]
-    should-run)
+                  should-run)
   (get-update-fn [_]
-    update-fn)
+                 update-fn)
   (get-required-components [_]
-    required-components))
+                           required-components))
 
 (defn s [{:keys [id priority update-fn should-run required-components]}]
   (let [rc-arr (clj->js (or (vec required-components) []))]
@@ -133,14 +134,14 @@
                     ^:mutable frame]
   Object
   (toString [this]
-    (str
-     (.-globals this)))
+            (str
+             (.-globals this)))
   IEngine
   (run-engine [this]
-    (doto this
-      (frame-inc)
-      (run-events)
-      (run-systems))))
+              (doto this
+                (frame-inc)
+                (run-events)
+                (run-systems))))
 
 (defn shallow-clj->arr [coll]
   (let [arr (array)]
@@ -151,10 +152,10 @@
 (deftype User [firstname lastname]
   Object
   (toString [this]
-    (str
-     (.-firstname this)
-     " "
-     (.-lastname this))))
+            (str
+             (.-firstname this)
+             " "
+             (.-lastname this))))
 
 (defn engine [{:keys [event-handlers globals entities systems]}]
   (let [eng (ECSEngine. (or event-handlers {})
