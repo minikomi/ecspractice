@@ -41,7 +41,7 @@
     (.addChild stage bunny)
     (ecs/e
      [(new-position x y)
-      (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10)) 5))
+      (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10))))
       (ecs/c {:id :renderable
               :properties (Renderable. :bunny bunny)})])))
 
@@ -67,7 +67,7 @@
                         dx (aget vel "dx")
                         dy (aget vel "dy")
                         new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
-                        new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
+                        new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ dy 2))]
                     (when (or (not (identical? new-dx dx))
                               (not (identical? new-dy dy)))
                       (vreset! vel-at (Velocity. new-dx new-dy)))))))}))
@@ -145,7 +145,7 @@
 
 (defn make-engine [renderer stage]
   (ecs/engine {:entities
-               (vec (repeatedly 20000 #(new-bunny stage (rand-int W) (rand-int H))))
+               (vec (repeatedly 12000 #(new-bunny stage (rand-int W) (rand-int H))))
                :systems [bounce move render]
                :event-handlers {:mouse-down mouse-down-handler
                                 :mouse-up mouse-up-handler}
