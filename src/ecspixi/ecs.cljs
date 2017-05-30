@@ -38,8 +38,9 @@
    (random-uuid)
    (clj->js (assoc-by-id {} (or components [])))
    (->> components
-        (map #(vector (.-id %) true))
-        (into {}) clj->js)))
+        (map #(vector (o/get % "id") true))
+        (into {})
+        clj->js)))
 
 ;; [C]omponent
 ;; ----------------------------------------------------------------
@@ -84,7 +85,7 @@
              (fn [e]
                (.every
                 rc-arr
-                #(aget (.-component-set e) %))))))
+                #(o/get (.-component-set e) %))))))
 
 (defn priority-sort [systems]
   (sort-by get-priority systems))
@@ -96,7 +97,7 @@
   ([eng event-name]
    (event! eng event-name nil))
   ([eng event-name data]
-   (vswap! (:event-bus eng) conj [event-name data])))
+   (.push (.-event-bus eng) [event-name data])))
 
 ;; Engine
 ;; ----------------------------------------------------------------
@@ -108,9 +109,11 @@
   (set! (.-frame engine) (+ 1 (.-frame engine))))
 
 (defn run-events [engine]
-  (let [current-events (o/get engine "event-bus")]
-    ;;; TODO EVENT HANDLING
-    (o/set engine "event-bus" #js[])))
+  (let [current-events (.-event-bus engine)]
+    (doseq [[ev-type data] current-events]
+      (when-let [h (ev-type (.-event-handlers engine))]
+        (h engine data)))
+    (set! (.-event-bus engine) #js[])))
 
 (defn run-systems [engine]
   (.forEach (.-systems engine)
@@ -123,6 +126,7 @@
   nil)
 
 (deftype ECSEngine [event-handlers
+                    ^:mutable event-bus
                     ^:mutable globals
                     ^:mutable entities
                     ^:mutable systems
@@ -135,6 +139,7 @@
   (run-engine [this]
     (doto this
       (frame-inc)
+      (run-events)
       (run-systems))))
 
 (defn shallow-clj->arr [coll]
@@ -152,7 +157,8 @@
      (.-lastname this))))
 
 (defn engine [{:keys [event-handlers globals entities systems]}]
-  (let [eng (ECSEngine. (clj->js (or event-handlers {}))
+  (let [eng (ECSEngine. (or event-handlers {})
+                        #js[]
                         (or globals {})
                         (or (shallow-clj->arr entities) #js[])
                         (clj->js (or systems []))

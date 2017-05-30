@@ -55,21 +55,19 @@
     :required-components #{:position :velocity}
     :update-fn
     (fn bounce-update [engine es]
-      (.forEach es
-                (fn bounce-inner [e]
-                  (let [w (:w (.-globals engine) 0)
-                        h (:h (.-globals engine) 0)
-                        pos @(gobj/get (.-components e)  "position")
-                        x (aget pos "x")
-                        y (aget pos "y")
-                        vel-at (gobj/get (.-components e) "velocity")
-                        vel @vel-at
-                        dx (aget vel "dx")
-                        dy (aget vel "dy")
-                        new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
-                        new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ dy 2))]
-                    (when (or (not (identical? new-dx dx))
-                              (not (identical? new-dy dy)))
+      (let [w (:w (.-globals engine))
+            h (:h (.-globals engine))]
+        (.forEach es
+                  (fn bounce-inner [e]
+                    (let[pos @(gobj/get (.-components e)  "position")
+                         x (.-x pos)
+                         y (.-y pos)
+                         vel-at (gobj/get (.-components e) "velocity")
+                         vel @vel-at
+                         dx (.-dx vel)
+                         dy (.-dy vel)
+                         new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
+                         new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
                       (vreset! vel-at (Velocity. new-dx new-dy)))))))}))
 
 (def move
@@ -81,28 +79,26 @@
     (fn move-update [_ es]
       (.forEach es
                 (fn [e]
-                  (let [pos-at (ecs/get-component e :position)
+                  (let [pos-at (gobj/get (.-components e) "position")
                         pos @pos-at
-                        x (aget pos "x")
-                        y (aget pos "y")
-                        vel @(ecs/get-component e :velocity)
-                        dx (aget vel "dx")
-                        dy (aget vel "dy")]
+                        x (.-x pos)
+                        y (.-y pos)
+                        vel @(gobj/get (.-components e) "velocity")
+                        dx (.-dx vel)
+                        dy (.-dy vel)]
                     (vreset! pos-at (Position. (+ x dx)
                                                (+ y dy)))))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
   (set! (.-hitArea stage)
-        (P.Rectangle. 0 0 (-> eng :globals :w) (-> eng :globals :h)))
+        (P.Rectangle. 0 0 ((.-globals eng) :w) ((.-globals eng) :h)))
   (.on stage "mousedown"
        (fn [ev]
-         (ecs/event! eng
-                     :mouse-down)))
+         (ecs/event! eng :mouse-down {:x (.. ev -data -global -x)
+                                      :y (.. ev -data -global -y)})))
   (.on stage "mouseup"
-       (fn [ev]
-         (ecs/event! eng
-                     :mouse-up))))
+       (fn [ev] (ecs/event! eng :mouse-up))))
 
 (defn prop-set! [obj k v]
   (gobj/set obj k v)
@@ -123,8 +119,8 @@
       (let [{:keys [stage renderer mouse spr]} (.-globals eng)]
         (.forEach es
                   (fn [e]
-                    (let [pos @(aget (.-components e) "position")
-                          go (.-graph-obj @(aget (.-components e) "renderable"))]
+                    (let [pos @(gobj/get (.-components e) "position")
+                          go (.-graph-obj @(gobj/get (.-components e) "renderable"))]
                       (.set (.-position go)
                             (.-x pos)
                             (.-y pos)))))
@@ -133,31 +129,49 @@
 ;; Scaffolding
 ;; ----------------------------------------------------------------
 
-(defn mouse-down-handler [engine _]
-  (assoc-in engine [:globals :mouse] :down))
+(defn mouse-down-handler [engine pos]
+  (let [w (:w (.-globals engine))
+        h (:h (.-globals engine))
+        stage (:stage (.-globals engine))]
+    (doseq [_ (range 50)]
+      (.push (.-entities engine)
+            (new-bunny stage
+                        (:x pos)
+                        (:y pos))))
+    (when (< 2000 (.-length (.-entities engine)))
+      (let [n (- (.-length (.-entities engine)) 2000)
+            removed (.slice (.-entities engine) 0 n)
+            remain (.slice (.-entities engine) n)]
+        (doseq [e removed]
+          (.removeChild stage (.-graph-obj @(gobj/get (.-components e) "renderable"))))
+        (set! (.-entities engine) remain)))))
 
-(defn mouse-up-handler [engine _]
 
-  (assoc-in engine [:globals :mouse] :up))
 
-(def W (.. js/window -document -body -clientWidth))
-(def H (.. js/window -document -body -clientHeight))
+(defn mouse-up-handler [engine _])
+
+
 
 (defn make-engine [renderer stage]
-  (ecs/engine {:entities
-               (vec (repeatedly 12000 #(new-bunny stage (rand-int W) (rand-int H))))
-               :systems [bounce move render]
-               :event-handlers {:mouse-down mouse-down-handler
-                                :mouse-up mouse-up-handler}
-               :globals {:renderer renderer
-                         :stage stage
-                         :mouse :up
-                         :w (.-width renderer)
-                         :h (.-height renderer)}}))
+   (ecs/engine {:entities
+                (vec (repeatedly 5 #(new-bunny stage
+                                               (rand-int (.-width renderer))
+                                               (rand-int (.-height renderer)))))
+                :systems [bounce move render]
+                :event-handlers {:mouse-down mouse-down-handler
+                                 :mouse-up mouse-up-handler}
+                :globals {:renderer renderer
+                          :stage stage
+                          :mouse :up
+                          :w (.-width renderer)
+                          :h (.-height renderer)}}))
 
 (defn game []
+
   (let [dom-node (atom false)
-        mouse-state (atom {:mousedown false})]
+        mouse-state (atom {:mousedown false})
+        W (.. js/window -document -body -clientWidth)
+        H (.. js/window -document -body -clientHeight)]
     (r/create-class
      {:display-name "game"
       :component-did-mount
