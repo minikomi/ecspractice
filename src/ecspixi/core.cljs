@@ -136,7 +136,7 @@
             removed (.slice entities 0 n)
             remain (.slice entities n)]
         (doseq [e removed]
-          (.removeChild stage (.-graph-obj @(e :renderable))))
+          (.removeChild stage (.-graph-obj @(:renderable e))))
         (set! (.-entities engine) remain)))))
 
 
@@ -158,7 +158,6 @@
                           :h (.-height renderer)}}))
 
 (defn game []
-
   (let [dom-node (atom false)
         mouse-state (atom {:mousedown false})
         W (.. js/window -document -body -clientWidth)

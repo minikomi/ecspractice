@@ -23,16 +23,25 @@
   (get-in entity [:components c-name]))
 
 (defprotocol IECSEntity
-  (get-component [_ k]))
+  (get-component
+    [this k]
+    [this k not-found]))
 
 (deftype Entity [id components component-set]
   ILookup
   (-lookup [this k] (-lookup this k nil))
   (-lookup [this k not-found]
-    (get-component this k))
+    (get-component this k not-found))
+  IFn
+  (-invoke [this k]
+    (-lookup this k))
+  (-invoke [this k not-found]
+    (-lookup this k not-found))
   IECSEntity
-  (get-component [_ k]
-    (o/get components (name k))))
+  (get-component [this k]
+    (get-component this k nil))
+  (get-component [this k not-found]
+    (o/get components (name k) not-found)))
 
 (defn e [components]
   (Entity.
