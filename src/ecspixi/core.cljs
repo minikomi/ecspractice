@@ -57,17 +57,16 @@
     (fn bounce-update [engine es]
       (let [w (:w (.-globals engine))
             h (:h (.-globals engine))]
-        (.forEach es
-                  (fn bounce-inner [e]
-                    (let [pos @(:position e)
-                          x (.-x pos)
-                          y (.-y pos)
-                          vel @(:velocity e)
-                          dx (.-dx vel)
-                          dy (.-dy vel)
-                          new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
-                          new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
-                      (vreset! (:velocity e) (Velocity. new-dx new-dy)))))))}))
+        (doseq [e es]
+          (let [pos @(:position e)
+                x (.-x pos)
+                y (.-y pos)
+                vel @(:velocity e)
+                dx (.-dx vel)
+                dy (.-dy vel)
+                new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
+                new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
+            (vreset! (:velocity e) (Velocity. new-dx new-dy))))))}))
 
 (def move
   (ecs/s
@@ -76,15 +75,14 @@
     :required-components #{:position :velocity}
     :update-fn
     (fn move-update [_ es]
-      (.forEach es
-                (fn [e]
-                  (let [pos @(:position e)
-                        x (.-x pos)
-                        y (.-y pos)
-                        vel @(:velocity e)
-                        dx (.-dx vel)
-                        dy (.-dy vel)]
-                    (vreset! (:position e) (Position. (+ x dx) (+ y dy)))))))}))
+      (doseq [e es]
+        (let [pos @(:position e)
+              x (.-x pos)
+              y (.-y pos)
+              vel @(:velocity e)
+              dx (.-dx vel)
+              dy (.-dy vel)]
+          (vreset! (:position e) (Position. (+ x dx) (+ y dy))))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
@@ -136,7 +134,8 @@
             removed (.slice entities 0 n)
             remain (.slice entities n)]
         (doseq [e removed]
-          (.removeChild stage (.-graph-obj @(:renderable e))))
+          (.removeChild stage
+                        (.-graph-obj @(:renderable e))))
         (set! (.-entities engine) remain)))))
 
 
