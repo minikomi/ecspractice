@@ -11,17 +11,14 @@
 ;; components
 ;; ----------------------------------------------------------------
 
-(deftype Position [x y])
-
 (defn new-position [x y]
   (ecs/c {:id :position
-          :properties (Position. x y)}))
-
-(deftype Velocity [dx dy])
+          :properties {:x x :y y}}))
 
 (defn new-velocity [dx dy]
   (ecs/c {:id :velocity
-          :properties (Velocity. dx dy)}))
+          :properties {:dx dx :dy dy}}))
+
 
 ;; entities
 ;; ----------------------------------------------------------------
@@ -34,8 +31,6 @@
   (gobj/set obj (name k) v)
   obj)
 
-(deftype Renderable [type graph-obj])
-
 (defn new-bunny [stage x y]
   (let [bunny (.fromImage P.Sprite
                           "https://pixijs.github.io/examples/required/assets/basics/bunny.png")]
@@ -44,7 +39,7 @@
      [(new-position x y)
       (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10))))
       (ecs/c {:id :renderable
-              :properties (Renderable. :bunny bunny)})])))
+              :properties {:type :bunny :graph-obj bunny}})])))
 
 ;; systems
 ;; ----------------------------------------------------------------
@@ -59,15 +54,11 @@
       (let [w (:w (.-globals engine))
             h (:h (.-globals engine))]
         (doseq [e es]
-          (let [pos @(:position e)
-                x (.-x pos)
-                y (.-y pos)
-                vel @(:velocity e)
-                dx (.-dx vel)
-                dy (.-dy vel)
+          (let [{:keys [x y] :as pos} (:position e)
+                {:keys [dx dy] :as pos} (:velocity e)
                 new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
                 new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
-            (vreset! (:velocity e) (Velocity. new-dx new-dy))))))}))
+            (vreset! (:velocity e) {:dx new-dx :dy new-dy})))))}))
 
 (def move
   (ecs/s
@@ -77,13 +68,11 @@
     :update-fn
     (fn move-update [_ es]
       (doseq [e es]
-        (let [pos @(:position e)
-              x (.-x pos)
-              y (.-y pos)
-              vel @(:velocity e)
-              dx (.-dx vel)
-              dy (.-dy vel)]
-          (vreset! (:position e) (Position. (+ x dx) (+ y dy))))))}))
+        (let [{:keys [x y] :as pos} (:position e)
+              {:keys [dx dy]} (:velocity e)]
+          (vreset! (:position e)
+                   {:x (+ x dx)
+                    :y (+ y dy)}))))}))
 
 (def render
   (ecs/s
@@ -93,9 +82,9 @@
     (fn update-render [eng es]
       (let [{:keys [stage renderer mouse spr]} (.-globals eng)]
         (doseq [e es]
-          (let [pos @(:position e)
-                go (.-graph-obj @(:renderable e))]
-            (.set (.-position go) (.-x pos) (.-y pos))))
+          (let [{:keys [x y]} (:position e)
+                go (:graph-obj (:renderable e))]
+            (.set (.-position go) x y)))
         (.render renderer stage)))}))
 
 ;; Scaffolding
@@ -126,7 +115,7 @@
             remain (.slice entities n)]
         (doseq [e removed]
           (.removeChild stage
-                        (.-graph-obj @(:renderable e))))
+                        (:graph-obj (:renderable e))))
         (set! (.-entities engine) remain)))))
 
 (defn mouse-up-handler [engine _])

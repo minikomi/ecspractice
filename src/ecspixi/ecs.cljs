@@ -56,14 +56,23 @@
 ;; ----------------------------------------------------------------
 
 (deftype Component [id ^:mutable properties]
+  ILookup
+  (-lookup [this k] (-lookup this k nil))
+  (-lookup [this k not-found]
+    (o/get properties (name k) nil))
+  IFn
+  (-invoke [this k]
+    (-lookup this k))
+  (-invoke [this k not-found]
+    (-lookup this k not-found))
   IVolatile
   (-vreset! [_ new-properties]
-            (set! properties new-properties))
+    (set! properties (clj->js new-properties)))
   IDeref
   (-deref [_] properties))
 
 (defn c [{:keys [id properties]}]
-  (Component. id (or properties {})))
+  (Component. id (clj->js (or properties {}))))
 
 ;; [S]ystem
 ;; ----------------------------------------------------------------
@@ -77,13 +86,13 @@
 (deftype System [id priority update-fn should-run required-components entity-filter]
   IECSSystem
   (get-priority [this]
-                priority)
+    priority)
   (get-should-run [_]
-                  should-run)
+    should-run)
   (get-update-fn [_]
-                 update-fn)
+    update-fn)
   (get-required-components [_]
-                           required-components))
+    required-components))
 
 (defn s [{:keys [id priority update-fn should-run required-components]}]
   (let [rc-arr (clj->js (or (vec required-components) []))]
