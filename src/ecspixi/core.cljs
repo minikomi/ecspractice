@@ -37,7 +37,8 @@
 (deftype Renderable [type graph-obj])
 
 (defn new-bunny [stage x y]
-  (let [bunny (.fromImage P.Sprite "https://pixijs.github.io/examples/required/assets/basics/bunny.png")]
+  (let [bunny (.fromImage P.Sprite
+                          "https://pixijs.github.io/examples/required/assets/basics/bunny.png")]
     (.addChild stage bunny)
     (ecs/e
      [(new-position x y)
@@ -84,27 +85,6 @@
               dy (.-dy vel)]
           (vreset! (:position e) (Position. (+ x dx) (+ y dy))))))}))
 
-(defn make-input-system [stage eng]
-  (set! (.-interactive stage) true)
-  (set! (.-hitArea stage)
-        (P.Rectangle. 0 0 ((.-globals eng) :w) ((.-globals eng) :h)))
-  (.on stage "mousedown"
-       (fn [ev]
-         (ecs/event! eng :mouse-down {:x (.. ev -data -global -x)
-                                      :y (.. ev -data -global -y)})))
-  (.on stage "mouseup"
-       (fn [ev] (ecs/event! eng :mouse-up))))
-
-(defn prop-set! [obj k v]
-  (gobj/set obj k v)
-  obj)
-
-(defn ensure-staged! [graph-obj stage]
-  (when-not (gobj/get graph-obj "staged")
-    (do (gobj/set graph-obj "staged" true)
-        (.addChild stage graph-obj)))
-  graph-obj)
-
 (def render
   (ecs/s
    {:id :render-graph-obj
@@ -120,6 +100,17 @@
 
 ;; Scaffolding
 ;; ----------------------------------------------------------------
+
+(defn make-input-system [stage eng]
+  (set! (.-interactive stage) true)
+  (set! (.-hitArea stage)
+        (P.Rectangle. 0 0 ((.-globals eng) :w) ((.-globals eng) :h)))
+  (.on stage "mousedown"
+       (fn [ev]
+         (ecs/event! eng :mouse-down {:x (.. ev -data -global -x)
+                                      :y (.. ev -data -global -y)})))
+  (.on stage "mouseup"
+       (fn [ev] (ecs/event! eng :mouse-up))))
 
 (defn mouse-down-handler [engine pos]
   (let [w (:w (.-globals engine))
@@ -137,8 +128,6 @@
           (.removeChild stage
                         (.-graph-obj @(:renderable e))))
         (set! (.-entities engine) remain)))))
-
-
 
 (defn mouse-up-handler [engine _])
 
