@@ -99,9 +99,6 @@
 ;; ----------------------------------------------------------------
 
 (defprotocol IEngine
-  (get-systems [o])
-  (get-globals [o])
-  (get-entities [o])
   (run-engine [o]))
 
 (defn frame-inc [engine]
@@ -113,18 +110,21 @@
     (o/set engine "event-bus" #js[])))
 
 (defn run-systems [engine]
-  (.forEach (get-systems engine)
+  (.forEach (.-systems engine)
             (fn [system]
               ((get-update-fn system) engine
-               (.filter
-                (get-entities engine)
-                (fn [e]
-                  (let [ecs (get-component-set e)]
-                    (.every
-                     (get-required-components system)
-                     #(o/get ecs %))))))))
-  nil)
+                                      (.filter
+                                       (.-entities engine)
+                                       (fn [e]
+                                         (let [ecs (.-component-set e)
+                                               rc (.-required-components system)
+                                               lookup (fn [c]
+                                                        (aget ecs c))]
+                                           (.every
+                                            rc
+                                            lookup)))))))
 
+  nil)
 
 (deftype ECSEngine [event-handlers
                     ^:mutable globals
@@ -136,12 +136,6 @@
     (str
      (.-globals this)))
   IEngine
-  (get-systems [this]
-    systems)
-  (get-entities [this]
-    entities)
-  (get-globals [this]
-    globals)
   (run-engine [this]
     (doto this
       (frame-inc)
@@ -166,10 +160,7 @@
                         (or globals {})
                         (or (shallow-clj->arr entities) #js[])
                         (clj->js (or systems []))
-                        0)]
-
-
-    eng))
+                        0)] eng))
 
 (defn run-engine! [running! eng]
   (let [loop-fn

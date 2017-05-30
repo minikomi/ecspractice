@@ -11,15 +11,17 @@
 ;; components
 ;; ----------------------------------------------------------------
 
+(deftype Position [x y])
+
 (defn new-position [x y]
   (ecs/c {:id :position
-          :properties {:x x
-                       :y y}}))
+          :properties (Position. x y)}))
+
+(deftype Velocity [dx dy])
 
 (defn new-velocity [dx dy]
   (ecs/c {:id :velocity
-          :properties {:dx dx
-                       :dy dy}}))
+          :properties (Velocity. dx dy)}))
 
 ;; entities
 ;; ----------------------------------------------------------------
@@ -32,31 +34,16 @@
   (gobj/set obj (name k) v)
   obj)
 
-(def ct
-  (let [c  (.createElement js/document "canvas")]
-    (set! (.-length c) 800)
-    (set! (.-height c) 8)
-    (.fromCanvas P.BaseTexture c)))
+(deftype Renderable [type graph-obj])
 
-(def textures
-  (for [n (range 100)]
-    (P.Texture. ct
-               (-> (P.Graphics.)
-                   (.beginFill (rand-col))
-                   (.drawCircle (* n 8) 0 4)
-                   (.endFill)))))
-
-(defn new-ball [stage x y]
-  (print (rand-nth textures))
-  (let [ball (-> (P.Sprite. (rand-nth textures)))]
-   (.addChild stage ball)
-   (ecs/e
-    [(new-position x y)
-     (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10)) 5))
-     (ecs/c {:id :renderable
-             :properties {:type :ball
-                          :graph-obj ball}})])))
-
+(defn new-bunny [stage x y]
+  (let [bunny (.fromImage P.Sprite "https://pixijs.github.io/examples/required/assets/basics/bunny.png")]
+    (.addChild stage bunny)
+    (ecs/e
+     [(new-position x y)
+      (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10)) 5))
+      (ecs/c {:id :renderable
+              :properties (Renderable. :bunny bunny)})])))
 
 ;; systems
 ;; ----------------------------------------------------------------
@@ -68,16 +55,22 @@
     :required-components #{:position :velocity}
     :update-fn
     (fn bounce-update [engine es]
-      (doseq [e es]
-        (let [{:keys [w h]} (ecs/get-globals engine)
-              {:keys [x y]} @(ecs/get-component e :position)
-              vel (ecs/get-component e :velocity)
-              {:keys [dx dy]} @vel
-              new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
-              new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
-          (when (or (not= new-dx dx)
-                    (not= new-dy dy))
-            (vswap! vel assoc :dx new-dx :dy new-dy)))))}))
+      (.forEach es
+                (fn bounce-inner [e]
+                  (let [w (:w (.-globals engine) 0)
+                        h (:h (.-globals engine) 0)
+                        pos @(gobj/get (.-components e)  "position")
+                        x (.-x pos)
+                        y (.-y pos)
+                        vel-at (gobj/get (.-components e) "velocity")
+                        vel @vel-at
+                        dx (.-dx vel)
+                        dy (.-dy vel)
+                        new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
+                        new-dy (if (or (>= 0 y) (< h y)) (- dy) dy)]
+                    (when (or (not (identical? new-dx dx))
+                              (not (identical? new-dy dy)))
+                      (vreset! vel-at (Velocity. new-dx new-dy)))))))}))
 
 (def move
   (ecs/s
@@ -86,11 +79,17 @@
     :required-components #{:position :velocity}
     :update-fn
     (fn move-update [_ es]
-      (doseq [e es]
-        (let [pos (ecs/get-component e :position)
-              {:keys [x y]} @pos
-              {:keys [dx dy]} @(ecs/get-component e :velocity)]
-          (vswap! pos assoc :x (+ x dx) :y (+ y dy)))))}))
+      (.forEach es
+                (fn [e]
+                  (let [pos-at (ecs/get-component e :position)
+                        pos @pos-at
+                        x (.-x pos)
+                        y (.-y pos)
+                        vel @(ecs/get-component e :velocity)
+                        dx (.-dx vel)
+                        dy (.-dy vel)]
+                    (vreset! pos-at (Position. (+ x dx)
+                                               (+ y dy)))))))}))
 
 (defn make-input-system [stage eng]
   (set! (.-interactive stage) true)
@@ -121,12 +120,14 @@
     :required-components #{:renderable :position}
     :update-fn
     (fn update-render [eng es]
-      (let [{:keys [stage renderer mouse spr textures]} (ecs/get-globals eng)]
-        (doseq [e es]
-          (let [pos @(ecs/get-component e :position)]
-           (set! (.-position (:graph-obj @(ecs/get-component e :renderable)))
-                 #js{:x (:x pos)
-                     :y (:y pos)})))
+      (let [{:keys [stage renderer mouse spr]} (.-globals eng)]
+        (.forEach es
+                  (fn [e]
+                    (let [pos @(aget (.-components e) "position")
+                          go (.-graph-obj @(aget (.-components e) "renderable"))]
+                      (.set (.-position go)
+                            (.-x pos)
+                            (.-y pos)))))
         (.render renderer stage)))}))
 
 ;; Scaffolding
@@ -143,30 +144,16 @@
 (def H (.. js/window -document -body -clientHeight))
 
 (defn make-engine [renderer stage]
-
-  (let [rt1 (.create P.RenderTexture
-              (.-width renderer)
-              (.-height renderer))
-        rt2 (.create P.RenderTexture
-             (.-width renderer)
-             (.-height renderer))
-        spr (P.Sprite. rt1)]
-      (.addChild stage spr)
-
-      (ecs/engine {:entities
-                   (vec (repeatedly 10000 #(new-ball stage (rand-int W) (rand-int H))))
-                   :systems [bounce
-                             move
-                             render]
-                   :event-handlers {:mouse-down mouse-down-handler
-                                    :mouse-up mouse-up-handler}
-                   :globals {:renderer renderer
-                             :stage stage
-                             :mouse :up
-                             :w (.-width renderer)
-                             :h (.-height renderer)
-                             :textures (volatile! [rt1 rt2])
-                             :spr spr}})))
+  (ecs/engine {:entities
+               (vec (repeatedly 20000 #(new-bunny stage (rand-int W) (rand-int H))))
+               :systems [bounce move render]
+               :event-handlers {:mouse-down mouse-down-handler
+                                :mouse-up mouse-up-handler}
+               :globals {:renderer renderer
+                         :stage stage
+                         :mouse :up
+                         :w (.-width renderer)
+                         :h (.-height renderer)}}))
 
 (defn game []
   (let [dom-node (atom false)
