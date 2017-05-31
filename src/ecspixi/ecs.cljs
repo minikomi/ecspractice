@@ -10,6 +10,14 @@
   ([item-map items]
    (reduce #(assoc % (.-id %2) %2) item-map items)))
 
+(defn shallow-clj->js [m]
+  (let [obj (js-obj)
+        v (vec m)
+        c (count v)]
+    (dotimes [n c]
+      (aset obj (name (nth (nth v n) 0)) (nth (nth v n) 1)))
+    obj))
+
 ;; [E]ntity
 ;; ----------------------------------------------------------------
 
@@ -46,11 +54,11 @@
 (defn e [components]
   (Entity.
    (random-uuid)
-   (clj->js (assoc-by-id {} (or components [])))
+   (shallow-clj->js (assoc-by-id {} (or components [])))
    (->> components
         (map #(vector (o/get % "id") true))
         (into {})
-        clj->js)))
+        shallow-clj->js)))
 
 ;; [C]omponent
 ;; ----------------------------------------------------------------
@@ -67,12 +75,12 @@
     (-lookup this k not-found))
   IVolatile
   (-vreset! [_ new-properties]
-    (set! properties (clj->js new-properties)))
+    (set! properties (shallow-clj->js new-properties)))
   IDeref
   (-deref [_] properties))
 
 (defn c [{:keys [id properties]}]
-  (Component. id (clj->js (or properties {}))))
+  (Component. id (shallow-clj->js (or properties {}))))
 
 ;; [S]ystem
 ;; ----------------------------------------------------------------

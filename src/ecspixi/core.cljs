@@ -122,9 +122,10 @@
 
 (defn make-engine [renderer stage]
    (ecs/engine {:entities
-                (vec (repeatedly 5 #(new-bunny stage
-                                               (rand-int (.-width renderer))
-                                               (rand-int (.-height renderer)))))
+                (vec (repeatedly 5
+                                 #(new-bunny stage
+                                             (rand-int (.-width renderer))
+                                             (rand-int (.-height renderer)))))
                 :systems [bounce move render]
                 :event-handlers {:mouse-down mouse-down-handler
                                  :mouse-up mouse-up-handler}
