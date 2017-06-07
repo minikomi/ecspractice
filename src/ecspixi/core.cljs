@@ -54,8 +54,10 @@
       (let [w (:w (.-globals engine))
             h (:h (.-globals engine))]
         (doseq [e es]
-          (let [{:keys [x y] :as pos} (:position e)
-                {:keys [dx dy] :as pos} (:velocity e)
+          (let [pos @(:position e)
+                x (.-x pos)
+                y (.-y pos)
+                {:keys [dx dy]} (:velocity e)
                 new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
                 new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
             (vreset! (:velocity e) {:dx new-dx :dy new-dy})))))}))
@@ -68,7 +70,9 @@
     :update-fn
     (fn move-update [_ es]
       (doseq [e es]
-        (let [{:keys [x y] :as pos} (:position e)
+        (let [pos @(ecs/get-component e :position)
+              x (.-x pos)
+              y (.-y pos)
               {:keys [dx dy]} (:velocity e)]
           (vreset! (:position e)
                    {:x (+ x dx)
@@ -82,9 +86,9 @@
     (fn update-render [eng es]
       (let [{:keys [stage renderer mouse spr]} (.-globals eng)]
         (doseq [e es]
-          (let [{:keys [x y]} (:position e)
-                go (:graph-obj (:renderable e))]
-            (.set (.-position go) x y)))
+          (let [pos @(ecs/get-component e :position)
+                go (:graph-obj (ecs/get-component e :renderable))]
+            (set! (.-position go) pos)))
         (.render renderer stage)))}))
 
 ;; Scaffolding
@@ -109,8 +113,8 @@
     (doseq [_ (range 50)]
       (.push (.-entities engine)
             (new-bunny stage (:x pos) (:y pos))))
-    (when (< 2000 (.-length entities))
-      (let [n (- (.-length entities) 2000)
+    (when (< 10000 (.-length entities))
+      (let [n (- (.-length entities) 10000)
             removed (.slice entities 0 n)
             remain (.slice entities n)]
         (doseq [e removed]
@@ -122,7 +126,7 @@
 
 (defn make-engine [renderer stage]
    (ecs/engine {:entities
-                (vec (repeatedly 5
+                (vec (repeatedly 10000
                                  #(new-bunny stage
                                              (rand-int (.-width renderer))
                                              (rand-int (.-height renderer)))))

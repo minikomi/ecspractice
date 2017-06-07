@@ -12,10 +12,9 @@
 
 (defn shallow-clj->js [m]
   (let [obj (js-obj)
-        v (vec m)
-        c (count v)]
-    (dotimes [n c]
-      (aset obj (name (nth (nth v n) 0)) (nth (nth v n) 1)))
+        mv (vec m)]
+    (dotimes [n (count mv)]
+      (aset obj (name (nth (nth mv n) 0)) (nth (nth mv n) 1)))
     obj))
 
 ;; [E]ntity
@@ -42,9 +41,9 @@
     (get-component this k not-found))
   IFn
   (-invoke [this k]
-    (-lookup this k))
+    (get-component this (name k) nil))
   (-invoke [this k not-found]
-    (-lookup this k not-found))
+    (get-component this (name k) not-found))
   IECSEntity
   (get-component [this k]
     (get-component this k nil))
@@ -110,9 +109,15 @@
              (or should-run (constantly true))
              required-components
              (fn [e]
-               (.every
-                rc-arr
-                #(o/get (.-component-set e) %))))))
+               (let [cs (.-component-set e)
+                     rc-c (.-length rc-arr)]
+                 (loop [n 0]
+                   (if (<= rc-c n)
+                     true
+                     (if (o/get cs (aget rc-arr n) false)
+                       (recur (inc n))
+                       false))))))))
+
 
 (defn priority-sort [systems]
   (sort-by get-priority systems))
@@ -143,13 +148,23 @@
     (set! (.-event-bus engine) #js[])))
 
 (defn run-systems [engine]
-  (.forEach (.-systems engine)
-            (fn [system]
-              ((.-update-fn system) engine
-               (.filter
-                (.-entities engine)
-                (.-entity-filter system)))))
 
+  (let [sys-n (count (.-systems engine))
+        ents (.-entities engine)
+        ent-n (count ents)]
+   (loop [sys-n sys-n]
+     (when (< 0 sys-n)
+       (let [sys (aget (.-systems engine) (dec sys-n))
+             sys-fil (.-entity-filter sys)
+             sys-fn (.-update-fn sys)
+             ok-ents #js[]]
+        (loop [ent-n ent-n]
+          (when (< 0 ent-n)
+            (when (sys-fil (aget ents (dec ent-n)))
+              (.push ok-ents (aget ents (dec ent-n))))
+            (recur (dec ent-n))))
+        (sys-fn engine ents)
+        (recur (dec sys-n))))))
   nil)
 
 (deftype ECSEngine [event-handlers
