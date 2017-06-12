@@ -3,8 +3,8 @@
  :resource-paths #{"resources"}
  :target-path "./target/"
  :dependencies '[;; pin deps
-                 [org.clojure/clojure "1.8.0" :scope "provided"]
-                 [org.clojure/clojurescript "1.9.542"]
+                 [org.clojure/clojure "1.9.0-alpha17" :scope "provided"]
+                 [org.clojure/clojurescript "1.9.562"]
                  ;; util
                  [boot-deps "0.1.6"]
                  ;; cljs
@@ -21,6 +21,7 @@
                  [weasel "0.7.0" :scope "test"]
                  ;; Frontend
                  [reagent "0.6.2"]
+                 [binaryage/oops "0.5.5"]
                  [cljsjs/pixi "4.4.3-0"]])
 
 

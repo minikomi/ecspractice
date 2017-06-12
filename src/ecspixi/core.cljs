@@ -8,18 +8,6 @@
 
 (enable-console-print!)
 
-;; components
-;; ----------------------------------------------------------------
-
-(defn new-position [x y]
-  (ecs/c {:id :position
-          :properties {:x x :y y}}))
-
-(defn new-velocity [dx dy]
-  (ecs/c {:id :velocity
-          :properties {:dx dx :dy dy}}))
-
-
 ;; entities
 ;; ----------------------------------------------------------------
 
@@ -27,117 +15,85 @@
   (P.utils.rgb2hex (clj->js
                     [(+ 0.5 (rand 0.5)) (+ 0.5 (rand 0.5)) (+ 0.5 (rand 0.5))])))
 
-(defn set-attr [obj k v]
-  (gobj/set obj (name k) v)
-  obj)
+(defn get-sprite []
+  (.fromImage P.Sprite "https://pixijs.github.io/examples/required/assets/basics/bunny.png"))
 
-(defn new-bunny [stage x y]
-  (let [bunny (.fromImage P.Sprite
-                          "https://pixijs.github.io/examples/required/assets/basics/bunny.png")]
-    (.addChild stage bunny)
-    (ecs/e
-     [(new-position x y)
-      (new-velocity (- (inc (rand-int 10)) 5) (- (inc (rand-int 10))))
-      (ecs/c {:id :renderable
-              :properties {:type :bunny :graph-obj bunny}})])))
+(defn make-bunny [eng x y]
+  (let [bunny (ecs/e)
+        spr (get-sprite)]
+    (.addChild (:stage eng) spr)
+    (ecs/c eng bunny :bunny)
+    (ecs/c eng bunny :position {:x x :y y})
+    (ecs/c eng bunny :velocity {:dx (- (inc (rand-int 10)) 5)
+                                :dy (- (inc (rand-int 10)))})
+    (ecs/c eng bunny :renderable {:spr spr})))
 
 ;; systems
 ;; ----------------------------------------------------------------
 
 (def bounce
-  (ecs/s
-   {:id :bounce
-    :priority 0
-    :required-components #{:position :velocity}
-    :update-fn
-    (fn bounce-update [engine es]
-      (let [w (:w (.-globals engine))
-            h (:h (.-globals engine))]
-        (doseq [e es]
-          (let [pos @(:position e)
-                x (.-x pos)
-                y (.-y pos)
-                {:keys [dx dy]} (:velocity e)
-                new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
-                new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
-            (vreset! (:velocity e) {:dx new-dx :dy new-dy})))))}))
+  (ecs/s :bounce 0
+         (fn bounce-update [eng]
+           (let [w (:w eng)
+                 h (:h eng)]
+             (doseq [e (ecs/get-entities eng :bunny)]
+               (let [{:keys [x y]} (ecs/get-component eng e :position)
+                     {:keys [dx dy] :as vel} (ecs/get-component eng e :velocity)
+                     new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
+                     new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
+                 (vreset! vel {:dx new-dx :dy new-dy})))))))
 
 (def move
-  (ecs/s
-   {:id :move
-    :priority 1
-    :required-components #{:position :velocity}
-    :update-fn
-    (fn move-update [_ es]
-      (doseq [e es]
-        (let [pos @(ecs/get-component e :position)
-              x (.-x pos)
-              y (.-y pos)
-              {:keys [dx dy]} (:velocity e)]
-          (vreset! (:position e)
-                   {:x (+ x dx)
-                    :y (+ y dy)}))))}))
+  (ecs/s :move 1
+         (fn move-update [eng]
+           (doseq [e (ecs/get-entities eng :bunny)]
+             (let [pos (ecs/get-component eng e :position)
+                   vel (ecs/get-component eng e :velocity)]
+               (vreset! pos
+                        {:x (+ (:x pos) (:dx vel))
+                         :y (+ (:y pos) (:dy vel))}))))))
 
 (def render
-  (ecs/s
-   {:id :render-graph-obj
-    :required-components #{:renderable :position}
-    :update-fn
-    (fn update-render [eng es]
-      (let [{:keys [stage renderer mouse spr]} (.-globals eng)]
-        (doseq [e es]
-          (let [pos @(ecs/get-component e :position)
-                go (:graph-obj (ecs/get-component e :renderable))]
-            (set! (.-position go) pos)))
-        (.render renderer stage)))}))
+  (ecs/s :render
+         (fn update-render [eng]
+           (doseq [e (ecs/get-entities eng :bunny)]
+             (let [pos (ecs/get-component eng e :position)
+                   spr (:spr (ecs/get-component eng e :renderable))]
+               (.set (.-position spr) (:x pos) (:y pos))))
+           (.render
+            (:renderer eng)
+            (:stage eng)))))
 
 ;; Scaffolding
 ;; ----------------------------------------------------------------
 
-(defn make-input-system [stage eng]
-  (set! (.-interactive stage) true)
-  (set! (.-hitArea stage)
-        (P.Rectangle. 0 0 ((.-globals eng) :w) ((.-globals eng) :h)))
-  (.on stage "mousedown"
+(defn make-input-system [eng]
+  (set! (.-interactive (:stage eng)) true)
+  (set! (.-hitArea (:stage eng))
+        (P.Rectangle. 0 0 (:w eng) (:h eng)))
+  ;; mouse down broadcast
+  (.on (:stage eng) "mousedown"
        (fn [ev]
          (ecs/event! eng :mouse-down {:x (.. ev -data -global -x)
                                       :y (.. ev -data -global -y)})))
-  (.on stage "mouseup"
+  ;; mouse up broadcast
+  (.on (:stage eng) "mouseup"
        (fn [ev] (ecs/event! eng :mouse-up))))
 
 (defn mouse-down-handler [engine pos]
-  (let [w (:w (.-globals engine))
-        h (:h (.-globals engine))
-        stage (:stage (.-globals engine))
-        entities (.-entities engine)]
-    (doseq [_ (range 50)]
-      (.push (.-entities engine)
-            (new-bunny stage (:x pos) (:y pos))))
-    (when (< 10000 (.-length entities))
-      (let [n (- (.-length entities) 10000)
-            removed (.slice entities 0 n)
-            remain (.slice entities n)]
-        (doseq [e removed]
-          (.removeChild stage
-                        (:graph-obj (:renderable e))))
-        (set! (.-entities engine) remain)))))
+  (println "mouse down yo"))
 
 (defn mouse-up-handler [engine _])
 
 (defn make-engine [renderer stage]
-   (ecs/engine {:entities
-                (vec (repeatedly 10000
-                                 #(new-bunny stage
-                                             (rand-int (.-width renderer))
-                                             (rand-int (.-height renderer)))))
-                :systems [bounce move render]
-                :event-handlers {:mouse-down mouse-down-handler
-                                 :mouse-up mouse-up-handler}
-                :globals {:renderer renderer
-                          :stage stage
-                          :mouse :up
-                          :w (.-width renderer)
-                          :h (.-height renderer)}}))
+  (ecs/engine {:systems [bounce move render]
+               :event-handlers {:mouse-down mouse-down-handler
+                                :mouse-up mouse-up-handler}
+               :globals {:renderer renderer
+                         :stage stage
+                         :mouse :up
+                         :w (.-width renderer)
+                         :h (.-height renderer)}}))
 
 (defn game []
   (let [dom-node (atom false)
@@ -152,7 +108,8 @@
         (let [renderer (.autoDetectRenderer P W H)
               stage (P.Container.)
               eng (make-engine renderer stage)]
-          (make-input-system stage eng)
+          (make-input-system eng)
+          (dotimes [_ 10000] (make-bunny eng (rand-int W) (rand-int H)))
           (ecs/run-engine! dom-node eng)
           (.appendChild @dom-node (.-view renderer))))
       :component-will-unmount
