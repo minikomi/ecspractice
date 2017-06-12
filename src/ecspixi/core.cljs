@@ -21,9 +21,10 @@
 (defn make-bunny [eng x y]
   (let [bunny (ecs/e)
         spr (get-sprite)]
+    (.set (.-position spr) x y)
     (.addChild (:stage eng) spr)
     (ecs/c eng bunny :bunny)
-    (ecs/c eng bunny :position {:x x :y y})
+    (ecs/c eng bunny :position {:sprite-position (.-position spr)})
     (ecs/c eng bunny :velocity {:dx (- (inc (rand-int 10)) 5)
                                 :dy (- (inc (rand-int 10)))})
     (ecs/c eng bunny :renderable {:spr spr})))
@@ -37,7 +38,9 @@
            (let [w (:w eng)
                  h (:h eng)]
              (doseq [e (ecs/get-entities eng :bunny)]
-               (let [{:keys [x y]} (ecs/get-component eng e :position)
+               (let [pos (:sprite-position (ecs/get-component eng e :position))
+                     x (.-x pos)
+                     y (.-y pos)
                      {:keys [dx dy] :as vel} (ecs/get-component eng e :velocity)
                      new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
                      new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
@@ -47,22 +50,16 @@
   (ecs/s :move 1
          (fn move-update [eng]
            (doseq [e (ecs/get-entities eng :bunny)]
-             (let [pos (ecs/get-component eng e :position)
+             (let [pos (:sprite-position (ecs/get-component eng e :position))
                    vel (ecs/get-component eng e :velocity)]
-               (vreset! pos
-                        {:x (+ (:x pos) (:dx vel))
-                         :y (+ (:y pos) (:dy vel))}))))))
+               (.set pos
+                    (+ (.-x pos) (:dx vel))
+                    (+ (.-y pos) (:dy vel))))))))
 
 (def render
   (ecs/s :render
          (fn update-render [eng]
-           (doseq [e (ecs/get-entities eng :bunny)]
-             (let [pos (ecs/get-component eng e :position)
-                   spr (:spr (ecs/get-component eng e :renderable))]
-               (.set (.-position spr) (:x pos) (:y pos))))
-           (.render
-            (:renderer eng)
-            (:stage eng)))))
+           (.render (:renderer eng) (:stage eng)))))
 
 ;; Scaffolding
 ;; ----------------------------------------------------------------
