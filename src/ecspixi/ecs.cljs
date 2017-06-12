@@ -37,7 +37,7 @@
   ILookup
   (-lookup [this k] (-lookup this k nil))
   (-lookup [this k not-found]
-    (o/get properties (name k) nil))
+    (aget properties (name k)))
   IFn
   (-invoke [this k]
     (-lookup this k))
@@ -112,7 +112,7 @@
   ILookup
   (-lookup [this k] (-lookup this k nil))
   (-lookup [this k not-found]
-    (o/get globals (name k) nil))
+    (aget globals (name k)))
   IFn
   (-invoke [this k]
     (-lookup this k))
@@ -127,22 +127,24 @@
   (c [eng entity component-id]
     (c eng entity component-id nil))
   (c [eng entity component-id properties]
-    ;; add component -> entity
+
     (let [current-entities (o/get component->entities
-                                  component-id
+                                  (name component-id)
                                   #js[])]
       (.push current-entities entity)
-      (o/set component->entities component-id
+      (o/set component->entities
+             (name component-id)
              current-entities))
 
     (let [current-components (o/get entity->component entity #js{})]
-      (o/set current-components (name component-id)
+      (o/set current-components
+             (name component-id)
              (Component. component-id
                          (shallow-clj->obj (or properties {}))))
       (o/set entity->component entity current-components)))
 
   (get-entities [eng component-id]
-    (o/get component->entities component-id))
+    (aget component->entities (name component-id)))
 
   (get-component [eng entity-id component-id]
     (aget (o/get entity->component entity-id)
