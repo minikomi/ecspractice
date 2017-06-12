@@ -29,6 +29,11 @@
                                 :dy (- (inc (rand-int 10)))})
     (ecs/c eng bunny :renderable {:spr spr})))
 
+(defn delete-bunny [eng entity-id]
+  (let [spr (:spr (ecs/get-component eng e :renderable))]
+    (.removeChild (:stage eng) spr)
+    (ecs/remove-entity eng e)))
+
 ;; systems
 ;; ----------------------------------------------------------------
 
@@ -51,15 +56,12 @@
          (fn move-update [eng]
            (doseq [e (ecs/get-entities eng :bunny)]
              (if (< 0.98 (rand))
-               (let [spr (:spr (ecs/get-component eng e :renderable))]
-                 (.removeChild (:stage eng) spr)
-                 (ecs/remove-entity eng e))
+               (delete-bunny eng e)
                (let [pos (:sprite-position (ecs/get-component eng e :position))
                      vel (ecs/get-component eng e :velocity)]
                  (.set pos
                        (+ (.-x pos) (:dx vel))
                        (+ (.-y pos) (:dy vel)))))))))
-
 
 (def render
   (ecs/s :render
