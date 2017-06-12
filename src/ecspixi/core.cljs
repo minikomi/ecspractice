@@ -50,11 +50,16 @@
   (ecs/s :move 1
          (fn move-update [eng]
            (doseq [e (ecs/get-entities eng :bunny)]
-             (let [pos (:sprite-position (ecs/get-component eng e :position))
-                   vel (ecs/get-component eng e :velocity)]
-               (.set pos
-                    (+ (.-x pos) (:dx vel))
-                    (+ (.-y pos) (:dy vel))))))))
+             (if (< 0.98 (rand))
+               (let [spr (:spr (ecs/get-component eng e :renderable))]
+                 (.removeChild (:stage eng) spr)
+                 (ecs/remove-entity eng e))
+               (let [pos (:sprite-position (ecs/get-component eng e :position))
+                     vel (ecs/get-component eng e :velocity)]
+                 (.set pos
+                       (+ (.-x pos) (:dx vel))
+                       (+ (.-y pos) (:dy vel)))))))))
+
 
 (def render
   (ecs/s :render
@@ -78,7 +83,8 @@
        (fn [ev] (ecs/event! eng :mouse-up))))
 
 (defn mouse-down-handler [engine pos]
-  (println "mouse down yo"))
+  (dotimes [n 600]
+    (make-bunny engine (:x pos) (:y pos))))
 
 (defn mouse-up-handler [engine _])
 

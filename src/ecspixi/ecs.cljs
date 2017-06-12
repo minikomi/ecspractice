@@ -81,6 +81,7 @@
     [eng entity id properties])
   (get-entities [eng component-id])
   (get-component [eng entity-id component-id])
+  (remove-entity [eng entity-id])
   (run-engine [eng]))
 
 (defn frame-inc [engine]
@@ -100,7 +101,7 @@
 
 (deftype ECSEngine [event-handlers
                     ^:mutable event-bus
-                    ^:mutable entity->component
+                    ^:mutable entity->components
                     ^:mutable component->entities
                     ^:mutable globals
                     ^:mutable systems
@@ -136,19 +137,29 @@
              (name component-id)
              current-entities))
 
-    (let [current-components (o/get entity->component entity #js{})]
+    (let [current-components (o/get entity->components entity #js{})]
       (o/set current-components
              (name component-id)
              (Component. component-id
                          (shallow-clj->obj (or properties {}))))
-      (o/set entity->component entity current-components)))
+      (o/set entity->components entity current-components)))
 
   (get-entities [eng component-id]
     (aget component->entities (name component-id)))
 
   (get-component [eng entity-id component-id]
-    (aget (o/get entity->component entity-id)
+    (aget (o/get entity->components entity-id)
           (name component-id)))
+
+  (remove-entity [eng entity-id]
+    (let [components (o/get entity->components entity-id)]
+      (.forEach (o/getKeys components)
+                (fn [k]
+                  (let [es (o/get component->entities k)
+                        idx (.indexOf es entity-id)]
+                    (when (< -1 idx)
+                      (.splice es idx 1)))))
+      (o/remove entity->components entity-id)))
 
   (run-engine [this]
     (doto this
