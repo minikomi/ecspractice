@@ -43,7 +43,7 @@
            (let [w (:w eng)
                  h (:h eng)
                  update-fn
-                 (fn [e]
+                 (fn [_ e]
                   (let [pos (:sprite-position (ecs/get-component eng e :position))
                         x (.-x pos)
                         y (.-y pos)
@@ -61,7 +61,7 @@
   (ecs/s :move 1
          (fn move-update [^not-native eng]
            (ecs/run-entities eng :bunny
-                             (fn [e]
+                             (fn [_ e]
                                 (let [pos (get (ecs/get-component eng e :position) :sprite-position)
                                       vel (ecs/get-component eng e :velocity)]
                                   (.set pos
@@ -120,6 +120,8 @@
               eng (make-engine renderer stage)]
           (make-input-system eng)
           (dotimes [_ 10000] (make-bunny eng (rand-int W) (rand-int H)))
+          (time (dotimes [n 100]
+                  (ecs/run-engine eng)))
           (ecs/run-engine! dom-node eng)
           (.appendChild @dom-node (.-view renderer))))
       :component-will-unmount

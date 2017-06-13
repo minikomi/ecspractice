@@ -6,7 +6,7 @@
 
 (def MAX_PRIORITY (.-Infinity js/window))
 
-(defn shallow-clj->obj [^not-native m]
+(defn shallow-clj->obj [ m]
   (let [obj (js-obj)
         ks (.keys m)]
     (.forEach m
@@ -14,7 +14,7 @@
                 (aset obj (name k) v)))
     obj))
 
-(defn shallow-clj->arr [^not-native coll]
+(defn shallow-clj->arr [ coll]
   (let [arr (array)]
     (doseq [v coll]
       (.push arr v))
@@ -34,8 +34,8 @@
   (toString [this]
     (str (.-properties this)))
   ILookup
-  (-lookup [this ^not-native k] (-lookup this k nil))
-  (-lookup [this ^not-native k not-found]
+  (-lookup [this  k] (-lookup this k nil))
+  (-lookup [this  k not-found]
     (aget properties (name k)))
   IFn
   (-invoke [this k]
@@ -126,28 +126,29 @@
   (-invoke [this k not-found]
     (-lookup this k not-found))
   IVolatile
-  (-vreset! [_ ^not-native new-properties]
+  (-vreset! [_  new-properties]
     (set! globals (shallow-clj->obj new-properties)))
   IDeref
   (-deref [_] globals)
   IEngine
-  (get-component [^not-native eng entity-id ^not-native component-id]
+  (get-component [eng entity-id component-id]
     (aget (aget entity->components entity-id)
-          (name component-id)))
-  (get-entities [^not-native eng ^not-native component-id]
+          (.-name component-id)))
+  (get-entities [eng component-id]
     (aget component->entities (name component-id)))
-  (run-entities [^not-native eng ^not-native component-id ^not-native f]
-    (.forEach (aget component->entities (name component-id)) f))
-  (frame-inc [^not-native engine]
-    (set! (.-frame engine) (inc frame)))
+  (run-entities [eng component-id  f]
+    (.forEach (aget component->entities (name component-id)) (fn [ent] (f eng ent))))
+  (frame-inc [engine]
+    (set! frame (inc frame)))
   (run-events [engine]
     (doseq [[ev-type data] event-bus]
       (when-let [h (ev-type event-handlers)]
         (h engine data)))
-    (set! (.-event-bus engine) #js[]))
-  (run-systems [^not-native engine]
-    (dotimes [n (.-length systems)]
-      ((.-sys-fn (aget systems n)) engine)))
+    (set! event-bus #js[]))
+  (run-systems [engine]
+    (.forEach systems
+              (fn [s]
+                ((.-sys-fn s) engine))))
   (remove-entity [eng entity-id]
     (let [components (aget entity->components entity-id)]
       (.forEach (o/getKeys components)
@@ -156,10 +157,11 @@
                     (arr/remove es entity-id))))
       (o/remove entity->components entity-id))))
 
-(defn run-engine [^not-native eng]
-  (frame-inc eng)
-  (run-events eng)
-  (run-systems eng))
+(defn run-engine [eng]
+  (doto eng
+    (frame-inc)
+    (run-events)
+    (run-systems)))
 
 (defn engine [{:keys [event-handlers globals systems]}]
   (ECSEngine. (or event-handlers {})
@@ -172,7 +174,7 @@
                   shallow-clj->arr)
               0))
 
-(defn run-engine! [running! ^not-native eng]
+(defn run-engine! [running!  eng]
   (let [loop-fn
         (fn loop-fn []
           (when @running!
