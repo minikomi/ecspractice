@@ -90,7 +90,9 @@
    (reload :on-jsload 'ecspixi.core/init
            :ws-host "0.0.0.0"
            :asset-path "/public")
-   (build)))
+   (build)
+   (sift :include #{#"\.out" #"\.cljs\.edn$" #"^\." #"/\."} :invert true)
+   (target)))
 
 
 (deftask prod []

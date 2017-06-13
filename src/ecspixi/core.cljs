@@ -18,54 +18,59 @@
 (defn get-sprite []
   (.fromImage P.Sprite "https://pixijs.github.io/examples/required/assets/basics/bunny.png"))
 
-(defn make-bunny [eng x y]
+(defn make-bunny [^not-native eng x y]
   (let [bunny (ecs/e)
         spr (get-sprite)]
     (.set (.-position spr) x y)
     (.addChild (:stage eng) spr)
-    (ecs/c eng bunny :bunny)
+    (ecs/c eng bunny :bunny nil)
     (ecs/c eng bunny :position {:sprite-position (.-position spr)})
-    (ecs/c eng bunny :velocity {:dx (- (inc (rand-int 10)) 5)
-                                :dy (- (inc (rand-int 10)))})
+    (ecs/c eng bunny :velocity {:dx (- (inc (rand-int 20)) 10)
+                                :dy (- (inc (rand-int 20)))})
     (ecs/c eng bunny :renderable {:spr spr})))
 
 (defn delete-bunny [eng entity-id]
-  (let [spr (:spr (ecs/get-component eng e :renderable))]
+  (let [spr (:spr (ecs/get-component eng entity-id :renderable))]
     (.removeChild (:stage eng) spr)
-    (ecs/remove-entity eng e)))
+    (ecs/remove-entity eng entity-id)))
 
 ;; systems
 ;; ----------------------------------------------------------------
 
 (def bounce
   (ecs/s :bounce 0
-         (fn bounce-update [eng]
+         (fn bounce-update [^not-native eng]
            (let [w (:w eng)
-                 h (:h eng)]
-             (doseq [e (ecs/get-entities eng :bunny)]
-               (let [pos (:sprite-position (ecs/get-component eng e :position))
-                     x (.-x pos)
-                     y (.-y pos)
-                     {:keys [dx dy] :as vel} (ecs/get-component eng e :velocity)
-                     new-dx (if (or (>= 0 x) (< w x)) (- dx) dx)
-                     new-dy (if (or (>= 0 y) (< h y)) (- dy) (+ 1 dy))]
-                 (vreset! vel {:dx new-dx :dy new-dy})))))))
+                 h (:h eng)
+                 update-fn
+                 (fn [e]
+                  (let [pos (:sprite-position (ecs/get-component eng e :position))
+                        x (.-x pos)
+                        y (.-y pos)
+                        vel (ecs/get-component eng e :velocity)
+                        new-dx (if (or (>= 0 x) (< w x))
+                                 (- (get vel :dx nil))
+                                 (get vel :dx))
+                        new-dy (if (or (>= 0 y) (< h y))
+                                 (- (get vel :dy nil))
+                                 (+ 1 (get vel :dy)))]
+                    (vreset! vel {:dx new-dx :dy new-dy})))]
+              (ecs/run-entities eng :bunny update-fn)))))
 
 (def move
   (ecs/s :move 1
-         (fn move-update [eng]
-           (doseq [e (ecs/get-entities eng :bunny)]
-             (if (< 0.98 (rand))
-               (delete-bunny eng e)
-               (let [pos (:sprite-position (ecs/get-component eng e :position))
-                     vel (ecs/get-component eng e :velocity)]
-                 (.set pos
-                       (+ (.-x pos) (:dx vel))
-                       (+ (.-y pos) (:dy vel)))))))))
+         (fn move-update [^not-native eng]
+           (ecs/run-entities eng :bunny
+                             (fn [e]
+                                (let [pos (get (ecs/get-component eng e :position) :sprite-position)
+                                      vel (ecs/get-component eng e :velocity)]
+                                  (.set pos
+                                        (+ (.-x pos) (:dx vel))
+                                        (+ (.-y pos) (:dy vel)))))))))
 
 (def render
   (ecs/s :render
-         (fn update-render [eng]
+         (fn update-render [^not-native eng]
            (.render (:renderer eng) (:stage eng)))))
 
 ;; Scaffolding
@@ -85,8 +90,8 @@
        (fn [ev] (ecs/event! eng :mouse-up))))
 
 (defn mouse-down-handler [engine pos]
-  (dotimes [n 600]
-    (make-bunny engine (:x pos) (:y pos))))
+  (dotimes [_ 10000]
+    (make-bunny engine (+ (rand-int 500) (:x pos)) (+ (rand-int 500) (:y pos)))))
 
 (defn mouse-up-handler [engine _])
 
