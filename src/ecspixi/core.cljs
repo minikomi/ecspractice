@@ -18,16 +18,21 @@
 (defn get-sprite []
   (.fromImage P.Sprite "https://pixijs.github.io/examples/required/assets/basics/bunny.png"))
 
+(deftype Velocity [^:mutable dx ^:mutable dy]
+  Object
+  (set [_ dx' dy']
+    (set! dx dx')
+    (set! dy dy')))
+
 (defn make-bunny [^not-native eng x y]
   (let [bunny (ecs/e)
         spr (get-sprite)]
     (.set (.-position spr) x y)
     (.addChild (:stage eng) spr)
     (ecs/c eng bunny :bunny nil)
-    (ecs/c eng bunny :position {:sprite-position (.-position spr)})
-    (ecs/c eng bunny :velocity {:dx (- (inc (rand-int 20)) 10)
-                                :dy (- (inc (rand-int 20)))})
-    (ecs/c eng bunny :renderable {:spr spr})))
+    (ecs/c eng bunny :position (.-position spr))
+    (ecs/c eng bunny :velocity (Velocity. (rand-int 10) (rand-int 10)))
+    (ecs/c eng bunny :renderable spr)))
 
 (defn delete-bunny [eng entity-id]
   (let [spr (:spr (ecs/get-component eng entity-id :renderable))]
@@ -44,17 +49,17 @@
                  h (:h eng)
                  update-fn
                  (fn [_ e]
-                  (let [pos (:sprite-position (ecs/get-component eng e :position))
+                  (let [pos (ecs/get-component eng e :position)
                         x (.-x pos)
                         y (.-y pos)
                         vel (ecs/get-component eng e :velocity)
                         new-dx (if (or (>= 0 x) (< w x))
-                                 (- (get vel :dx nil))
-                                 (get vel :dx))
+                                 (- (.-dx vel))
+                                 (.-dx vel))
                         new-dy (if (or (>= 0 y) (< h y))
-                                 (- (get vel :dy nil))
-                                 (+ 1 (get vel :dy)))]
-                    (vreset! vel {:dx new-dx :dy new-dy})))]
+                                 (- (.-dy vel))
+                                 (+ 1 (.-dy vel)))]
+                    (.set vel new-dx new-dy)))]
               (ecs/run-entities eng :bunny update-fn)))))
 
 (def move
@@ -62,11 +67,11 @@
          (fn move-update [^not-native eng]
            (ecs/run-entities eng :bunny
                              (fn [_ e]
-                                (let [pos (get (ecs/get-component eng e :position) :sprite-position)
+                                (let [pos (ecs/get-component eng e :position)
                                       vel (ecs/get-component eng e :velocity)]
                                   (.set pos
-                                        (+ (.-x pos) (:dx vel))
-                                        (+ (.-y pos) (:dy vel)))))))))
+                                        (+ (.-x pos) (.-dx vel))
+                                        (+ (.-y pos) (.-dy vel)))))))))
 
 (def render
   (ecs/s :render

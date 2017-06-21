@@ -43,7 +43,7 @@
   (-invoke [this k not-found]
     (or (aget properties (name k)) not-found))
   IVolatile
-  (-vreset! [_ ^not-native new-properties]
+  (-vreset! [_ ^:not-native new-properties]
     (set! properties (shallow-clj->obj new-properties)))
   IDeref
   (-deref [_] properties))
@@ -97,7 +97,7 @@
     (o/set current-components
            (name component-id)
            (Component. component-id
-                       (shallow-clj->obj (or properties {}))))
+                       properties))
     (o/set (.-entity->components eng) entity current-components)))
 
 (deftype ECSEngine [event-handlers
@@ -132,8 +132,9 @@
   (-deref [_] globals)
   IEngine
   (get-component [eng entity-id component-id]
-    (aget (aget entity->components entity-id)
-          (.-name component-id)))
+    (.-properties
+     (aget (aget entity->components entity-id)
+           (.-name component-id))))
   (get-entities [eng component-id]
     (aget component->entities (name component-id)))
   (run-entities [eng component-id  f]
